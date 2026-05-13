@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "anneal"
+version = "0.0.1"
+description = "Harden code diffs with an iterative audit-fix or Red-vs-Blue adversarial loop."
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic",
+    "openai",
+    "pytest",
+    "python-dotenv",
+]
+
+[project.scripts]
+anneal = "anneal.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m not slow')",
+    "live_api: marks tests that call real LLM APIs (requires ANTHROPIC_API_KEY)",
+]
