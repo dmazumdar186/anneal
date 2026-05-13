@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from anneal.config import AnnealConfig
-from anneal.loop_classic import AnnealResult
+from anneal.result import AnnealResult
 
 
 def anneal_adversarial(cfg: AnnealConfig) -> AnnealResult:
