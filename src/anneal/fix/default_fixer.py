@@ -88,7 +88,10 @@ def parse_patch_response(text: str, tokens_used: int) -> Patch:
             continue
         diff_lines.append(line)
 
-    unified_diff = "".join(diff_lines).strip()
+    # Use rstrip() not strip() — leading whitespace before the `---` line should
+    # be stripped, but a trailing newline after the last hunk line is load-bearing
+    # for `git apply` (without it, git reports "corrupt patch").
+    unified_diff = "".join(diff_lines).strip() + "\n"
 
     return Patch(
         unified_diff=unified_diff,
