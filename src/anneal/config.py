@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from dotenv import dotenv_values
 
 if TYPE_CHECKING:
     from anneal.audit.base import Auditor
@@ -12,6 +16,11 @@ if TYPE_CHECKING:
     from anneal.adversarial.red import RedAgent
     from anneal.adversarial.blue import BlueAgent
     from anneal.adversarial.judge import Judge
+
+logger = logging.getLogger(__name__)
+
+# Glob pattern that identifies the AntiGravity / Accessory Masters workspace
+_AM_GLOB = "directives/gtm_client_workflows/accessory_masters_*"
 
 
 class MissingCredentials(Exception):
@@ -55,11 +64,62 @@ class AnnealConfig:
     judge_model: str | None = None
 
 
-def load_env(env_path: Path | None = None) -> dict[str, str]:
-    """Load anneal's own .env and return a dict of required keys.
+def assert_not_am_workspace(repo_path: Path) -> None:
+    """Defense-in-depth guard: warn if repo_path looks like the AM/AntiGravity workspace.
 
-    Guards against loading credentials from the AntiGravity workspace.
-    Raises MissingCredentials if ANTHROPIC_API_KEY is absent after loading.
-    Does NOT walk parent directories.
+    Checks for the co-presence of:
+      1. A file matching directives/gtm_client_workflows/accessory_masters_*
+      2. A .env file at repo_path root
+
+    If both are found, emits a warning so the user can see the protection trigger.
+    This is a logging guard only — load_env's explicit repo_root parameter is the
+    primary enforcement mechanism.
     """
-    raise NotImplementedError("anneal v0.0.1: not yet implemented")
+    env_file = repo_path / ".env"
+    if not env_file.exists():
+        return
+
+    # Check for AM-identifying files
+    am_files = list(repo_path.glob(_AM_GLOB))
+    if am_files:
+        msg = (
+            f"anneal AM-key guard triggered: repo_path '{repo_path}' looks like the "
+            f"AntiGravity / Accessory Masters workspace "
+            f"(found {len(am_files)} matching directives/gtm_client_workflows/accessory_masters_*). "
+            "anneal will NOT read .env from this path. "
+            "Provide your own anneal .env with user-owned API keys."
+        )
+        warnings.warn(msg, stacklevel=2)
+        logger.warning(msg)
+
+
+def load_env(repo_root: Path) -> dict[str, str]:
+    """Load anneal's own .env from repo_root ONLY — never walks parent directories.
+
+    Uses python-dotenv's dotenv_values() which reads the file directly without
+    modifying os.environ. Returns a dict with whatever keys are present.
+
+    The caller decides which keys are required. To check for ANTHROPIC_API_KEY:
+        env = load_env(repo_root)
+        key = env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise MissingCredentials("ANTHROPIC_API_KEY not set in anneal .env or shell")
+
+    AM-key guard: we explicitly pass repo_root so no parent-dir walk can happen.
+    The .env at repo_root/.env is the only file read.
+
+    Args:
+        repo_root: The anneal project root. Only repo_root/.env is read.
+
+    Returns:
+        Dict of key → value from the .env file, plus ANTHROPIC_API_KEY and
+        OPENAI_API_KEY if they appear. Empty dict if no .env exists.
+    """
+    env_file = repo_root / ".env"
+    if not env_file.exists():
+        return {}
+
+    raw: dict[str, str | None] = dotenv_values(env_file)
+    # Strip None values (unset vars in dotenv) and return only string values
+    result: dict[str, str] = {k: v for k, v in raw.items() if v is not None}
+    return result

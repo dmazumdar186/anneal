@@ -2,14 +2,47 @@
 
 from __future__ import annotations
 
+import os
 from typing import Literal
+
+import openai
+
+from anneal.config import MissingCredentials
+from anneal.llm.base import LLMError
 
 
 class OpenAILLM:
-    """LLM adapter that calls the OpenAI API."""
+    """LLM adapter that calls the OpenAI API.
 
-    def __init__(self, model: str = "gpt-4o", api_key: str | None = None) -> None:
-        raise NotImplementedError("anneal v0.0.1: not yet implemented")
+    Args:
+        model: OpenAI model ID. Defaults to gpt-5.
+        api_key: OpenAI API key. If None, read from OPENAI_API_KEY env var.
+        temperature: Sampling temperature. Defaults to 0.0 for determinism.
+        max_tokens: Maximum tokens in the response. Defaults to 8192.
+
+    Raises:
+        MissingCredentials: On construction if api_key is None and
+            OPENAI_API_KEY is not set in the environment.
+    """
+
+    def __init__(
+        self,
+        model: str = "gpt-5",
+        api_key: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 8192,
+    ) -> None:
+        if api_key is None:
+            api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise MissingCredentials(
+                "OPENAI_API_KEY is not set. "
+                "Add it to your anneal .env or export it in the shell."
+            )
+        self._model = model
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._client = openai.OpenAI(api_key=api_key)
 
     def complete(
         self,
@@ -17,5 +50,37 @@ class OpenAILLM:
         user: str,
         response_format: Literal["text", "json"] = "text",
     ) -> tuple[str, int]:
-        """Send prompt to OpenAI and return (response_text, tokens_used)."""
-        raise NotImplementedError("anneal v0.0.1: not yet implemented")
+        """Send prompt to OpenAI and return (response_text, tokens_used).
+
+        Args:
+            system: System prompt.
+            user: User message.
+            response_format: "json" sets response_format={"type": "json_object"}
+                on the API call (OpenAI native JSON mode).
+
+        Returns:
+            (response_text, total_tokens) where total_tokens = response.usage.total_tokens.
+
+        Raises:
+            LLMError: Wraps any openai.OpenAIError with the original as __cause__.
+        """
+        kwargs: dict = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if response_format == "json":
+            kwargs["response_format"] = {"type": "json_object"}
+
+        try:
+            response = self._client.chat.completions.create(**kwargs)
+        except openai.OpenAIError as exc:
+            raise LLMError(f"OpenAI API error: {exc}") from exc
+
+        text = response.choices[0].message.content or ""
+        tokens_used = response.usage.total_tokens
+        return text, tokens_used
