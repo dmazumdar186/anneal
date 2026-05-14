@@ -11,10 +11,10 @@ from anneal.loop_adversarial import anneal_adversarial
 from anneal.loop_classic import AnnealResult
 from anneal.config import AnnealConfig
 from anneal.llm.mock import DeterministicMockLLM
-from anneal.adversarial.base import Attack, AttackResult, AttackKind
-from anneal.adversarial.red import RedAgent
-from anneal.adversarial.blue import BlueAgent
-from anneal.adversarial.judge import Judge
+from anneal.adversarial.base import Attack, AttackResult, AttackKind  # noqa: F401
+from anneal.adversarial.red import Red  # noqa: F401
+from anneal.adversarial.blue import Blue  # noqa: F401
+from anneal.adversarial.judge import Judge  # noqa: F401
 
 
 def test_placeholder():
