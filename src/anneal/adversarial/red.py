@@ -178,7 +178,7 @@ class Red:
         self,
         diff: str,
         repo_root: Path,  # noqa: ARG002  # reserved for future file-inspection
-        history: list[Attack],
+        history: list[Attack] | list[dict],
     ) -> RedTurnOutput:
         """Run Red against the current diff.
 
@@ -186,24 +186,27 @@ class Red:
             diff: Current state of the diff under attack.
             repo_root: Worktree path. Red only sees the diff in the user message;
                 this parameter is reserved for future file-inspection features.
-            history: All Attack objects from previous rounds. Red sees their
-                fingerprints in the user message so it can avoid repeating doomed
-                attacks.
+            history: Previous attack records. Accepts either Attack dataclass objects
+                or the dict shape returned by TranscriptWriter.red_history()
+                (keys: fingerprint, kind, landed, round).
 
         Returns:
             RedTurnOutput with parsed Attack list and tokens_used.
         """
         history_lines: list[str] = []
-        # Group by fingerprint to detect repeated attacks
-        seen: dict[str, list[Attack]] = {}
+        # Group by fingerprint to detect repeated attacks.
+        # Each entry is either an Attack dataclass or a dict from red_history().
+        seen: dict[str, list] = {}
         for atk in history:
-            seen.setdefault(atk.fingerprint, []).append(atk)
+            fp = atk.fingerprint if hasattr(atk, "fingerprint") else atk["fingerprint"]
+            seen.setdefault(fp, []).append(atk)
 
         for fp, attacks in seen.items():
             last = attacks[-1]
+            kind = last.kind if hasattr(last, "kind") else last["kind"]
             note = "  [REPEATED — try different angle]" if len(attacks) >= 2 else ""
             history_lines.append(
-                f"- fingerprint={fp}  kind={last.kind}  round={len(attacks)}{note}"
+                f"- fingerprint={fp}  kind={kind}  round={len(attacks)}{note}"
             )
 
         history_block = (
