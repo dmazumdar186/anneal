@@ -135,11 +135,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "replay-am", help="AM-replay demo — classic mode on AM history (Phase 5)."
     )
     replay.add_argument("--commit", required=True, help="AntiGravity commit SHA to replay.")
-    replay.add_argument(
-        "--repo",
-        required=True,
-        help="Path to the AntiGravity workspace (read-only).",
-    )
+    # --repo comes from _add_common_args below (required is enforced at runtime)
     _add_common_args(replay)
 
     # --- show (stub) ---
