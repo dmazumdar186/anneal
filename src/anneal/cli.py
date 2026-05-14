@@ -258,6 +258,151 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
     raise SystemExit(0 if result.converged else 1)
 
 
+# ── Adversarial-mode flow ──────────────────────────────────────────────────────
+
+
+def _run_adversarial(args: argparse.Namespace) -> NoReturn:
+    """Execute the Red-vs-Blue adversarial loop and exit with appropriate code."""
+    from anneal.config import AnnealConfig, MissingCredentials, load_env, resolve_tier
+    from anneal.adversarial.red import Red
+    from anneal.adversarial.blue import Blue
+    from anneal.adversarial.judge import Judge
+    from anneal.llm.factory import build_llm
+    from anneal.loop_adversarial import anneal_adversarial
+
+    # --- Load .env from anneal root and merge with shell env ---
+    anneal_root = _find_anneal_root()
+    file_env: dict[str, str] = {}
+    if anneal_root:
+        file_env = load_env(anneal_root)
+    api_keys: dict[str, str] = {**file_env, **{k: v for k, v in os.environ.items() if v}}
+
+    # --- Resolve tier → per-role (provider, model) defaults ---
+    tier = getattr(args, "tier", "balanced") or "balanced"
+    tier_map = resolve_tier(tier)
+
+    global_model_override = getattr(args, "model", None)
+    global_provider_override = getattr(args, "provider", None)
+
+    def _resolve_role(role: str, role_model_attr: str) -> tuple[str, str]:
+        role_defaults = tier_map[role]
+        provider = global_provider_override or role_defaults["provider"]
+        model = (
+            getattr(args, role_model_attr, None)
+            or global_model_override
+            or role_defaults["model"]
+        )
+        return provider, model
+
+    red_provider, red_model = _resolve_role("red", "red_model")
+    blue_provider, blue_model = _resolve_role("blue", "blue_model")
+    judge_provider, judge_model = _resolve_role("judge", "judge_model")
+
+    # --- Print resolved per-role config ---
+    print(f"anneal adversarial  tier={tier}")
+    print(f"  red    provider={red_provider}  model={red_model}")
+    print(f"  blue   provider={blue_provider}  model={blue_model}")
+    print(f"  judge  provider={judge_provider}  model={judge_model}")
+
+    # --- Build LLM adapters ---
+    try:
+        red_llm = build_llm(red_provider, red_model, api_keys)
+        blue_llm = build_llm(blue_provider, blue_model, api_keys)
+        judge_llm = build_llm(judge_provider, judge_model, api_keys)
+    except MissingCredentials as exc:
+        print(f"anneal: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+    red = Red(red_llm)
+    blue = Blue(blue_llm)
+    judge = Judge(judge_llm)
+
+    # --- Resolve repo and base_ref ---
+    repo = Path(args.repo) if args.repo else Path.cwd()
+    ref = args.ref if args.ref else getattr(args, "base_ref", "HEAD~1")
+
+    # --- Resolve log_dir ---
+    if args.log_dir:
+        log_dir = Path(args.log_dir)
+    else:
+        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
+        log_dir = repo / ".anneal" / ts
+
+    cfg = AnnealConfig(
+        repo=repo,
+        base_ref=ref,
+        max_rounds=args.max_rounds,
+        until_clean=args.until_clean,
+        max_cost_usd=args.max_cost_usd,
+        dry_run=args.dry_run,
+        no_worktree=args.no_worktree,
+        diff_path=None,
+        log_dir=log_dir,
+        red=red,
+        blue=blue,
+        judge=judge,
+        model=red_model,
+        red_model=red_model,
+        blue_model=blue_model,
+        judge_model=judge_model,
+    )
+
+    result = anneal_adversarial(cfg)
+
+    # --- Pretty-print summary ---
+    status = "CONVERGED" if result.converged else "DID NOT CONVERGE"
+    print(f"\nanneal adversarial — {status}")
+    print(f"  rounds:    {result.rounds}")
+    print(f"  reason:    {result.reason}")
+    print(f"  cost:      ${result.total_cost_usd:.4f}")
+    if result.log_dir:
+        print(f"  transcript: {result.log_dir}")
+
+    raise SystemExit(0 if result.converged else 1)
+
+
+# ── show subcommand ────────────────────────────────────────────────────────────
+
+
+def _run_show(args: argparse.Namespace) -> NoReturn:
+    """Pretty-print the manifest.json from a past run."""
+    import json
+
+    log_dir = Path(args.log_dir)
+    manifest_path = log_dir / "manifest.json"
+    if not manifest_path.exists():
+        print(f"anneal show: manifest.json not found in '{log_dir}'", file=sys.stderr)
+        raise SystemExit(1)
+
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"anneal show: failed to read manifest.json: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+    mode = data.get("mode", "unknown")
+    started = data.get("started_at", "unknown")
+    finalized = data.get("finalized_at", "unknown")
+    result = data.get("result") or {}
+
+    print(f"anneal run — mode={mode}")
+    print(f"  started:   {started}")
+    print(f"  finalized: {finalized}")
+    if result:
+        converged = result.get("converged")
+        rounds = result.get("rounds")
+        reason = result.get("reason")
+        cost = result.get("total_cost_usd")
+        print(f"  converged: {converged}")
+        print(f"  rounds:    {rounds}")
+        print(f"  reason:    {reason}")
+        if cost is not None:
+            print(f"  cost:      ${float(cost):.4f}")
+    print(f"  log_dir:   {log_dir}")
+
+    raise SystemExit(0)
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 
@@ -267,16 +412,20 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command is None:
-        # No subcommand — behave as `anneal classic` with positional ref if given.
-        # Re-parse using the classic subparser defaults.
         parser.print_help()
         sys.exit(1)
 
     if args.command == "classic":
         _run_classic(args)
 
-    elif args.command in ("adversarial", "canary", "replay-am", "show"):
-        print(f"{args.command}: not yet implemented in Phase 2b", file=sys.stderr)
+    elif args.command == "adversarial":
+        _run_adversarial(args)
+
+    elif args.command == "show":
+        _run_show(args)
+
+    elif args.command in ("canary", "replay-am"):
+        print(f"{args.command}: not yet implemented (Phase 4/5)", file=sys.stderr)
         sys.exit(2)
 
     else:
