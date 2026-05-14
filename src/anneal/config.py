@@ -6,7 +6,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from dotenv import dotenv_values
 
@@ -38,7 +38,7 @@ class AnnealConfig:
     # Loop control
     max_rounds: int = 10
     until_clean: int = 2
-    max_cost_usd: float = 5.00
+    max_cost_usd: float = 1.00
     dry_run: bool = False
     no_worktree: bool = False
 
@@ -56,7 +56,7 @@ class AnnealConfig:
     judge: "Judge | None" = None
 
     # Model overrides (None = use default)
-    model: str = "claude-sonnet-4-6"
+    model: str = "claude-haiku-4-5-20251001"
     auditor_model: str | None = None
     fixer_model: str | None = None
     red_model: str | None = None
@@ -113,7 +113,7 @@ def load_env(repo_root: Path) -> dict[str, str]:
 
     Returns:
         Dict of key → value from the .env file, plus ANTHROPIC_API_KEY and
-        OPENAI_API_KEY if they appear. Empty dict if no .env exists.
+        OPENROUTER_API_KEY if they appear. Empty dict if no .env exists.
     """
     env_file = repo_root / ".env"
     if not env_file.exists():
@@ -123,3 +123,88 @@ def load_env(repo_root: Path) -> dict[str, str]:
     # Strip None values (unset vars in dotenv) and return only string values
     result: dict[str, str] = {k: v for k, v in raw.items() if v is not None}
     return result
+
+
+def resolve_tier(
+    tier: Literal["cheap", "balanced", "premium"],
+) -> dict[str, dict[str, str]]:
+    """Resolve a tier preset to per-role (provider, model) tuples.
+
+    Returns a dict keyed by role name. Each value is a dict with keys
+    ``"provider"`` and ``"model"``.
+
+    Tiers (per plan):
+      cheap     -> gemini-2.5-flash for all roles, openrouter
+      balanced  -> haiku 4.5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
+      premium   -> sonnet 4.6 for audit/fix/red/blue (anthropic), haiku 4.5 for judge (anthropic)
+
+    Example::
+
+        >>> resolve_tier("cheap")
+        {
+            "auditor": {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+            "fixer":   {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+            "red":     {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+            "blue":    {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+            "judge":   {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+        }
+
+        >>> resolve_tier("balanced")
+        {
+            "auditor": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "fixer":   {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "red":     {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "blue":    {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "judge":   {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+        }
+
+        >>> resolve_tier("premium")
+        {
+            "auditor": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "fixer":   {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "red":     {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "blue":    {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "judge":   {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+        }
+
+    Args:
+        tier: One of "cheap", "balanced", "premium".
+
+    Returns:
+        Dict mapping role → {"provider": ..., "model": ...}.
+
+    Raises:
+        ValueError: If tier is not one of the three valid values.
+    """
+    _GEMINI_FLASH = {"provider": "openrouter", "model": "google/gemini-2.5-flash"}
+    _HAIKU = {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"}
+    _SONNET = {"provider": "anthropic", "model": "claude-sonnet-4-6"}
+
+    if tier == "cheap":
+        return {
+            "auditor": _GEMINI_FLASH,
+            "fixer":   _GEMINI_FLASH,
+            "red":     _GEMINI_FLASH,
+            "blue":    _GEMINI_FLASH,
+            "judge":   _GEMINI_FLASH,
+        }
+    elif tier == "balanced":
+        return {
+            "auditor": _HAIKU,
+            "fixer":   _HAIKU,
+            "red":     _HAIKU,
+            "blue":    _HAIKU,
+            "judge":   _GEMINI_FLASH,
+        }
+    elif tier == "premium":
+        return {
+            "auditor": _SONNET,
+            "fixer":   _SONNET,
+            "red":     _SONNET,
+            "blue":    _SONNET,
+            "judge":   _HAIKU,
+        }
+    else:
+        raise ValueError(
+            f"Unknown tier {tier!r}. Valid values are: 'cheap', 'balanced', 'premium'."
+        )

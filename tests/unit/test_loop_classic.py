@@ -77,7 +77,7 @@ def _make_config(
         log_dir=log_dir,
         auditor=auditor,
         fixer=fixer,
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
     )
     return cfg, auditor_llm, fixer_llm
 

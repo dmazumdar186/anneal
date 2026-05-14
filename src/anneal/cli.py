@@ -46,12 +46,24 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
     """Add options shared across classic, adversarial, and replay-am subcommands."""
     p.add_argument("--auditor", default="pipeline-auditor", help="Auditor name or path.")
     p.add_argument("--fixer", default="default", help="Fixer name or path.")
-    p.add_argument("--model", default="claude-sonnet-4-6", help="Default LLM model.")
+    p.add_argument(
+        "--tier",
+        choices=["cheap", "balanced", "premium"],
+        default="balanced",
+        help="Model preset bundle: cheap (Gemini Flash/all), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge). Default: balanced.",
+    )
+    p.add_argument(
+        "--provider",
+        choices=["anthropic", "openrouter"],
+        default=None,
+        help="Force a specific provider for all roles. Default: use tier's per-role provider.",
+    )
+    p.add_argument("--model", default=None, help="Override the tier's default model for ALL roles.")
     p.add_argument("--auditor-model", default=None, help="Override model for auditor.")
     p.add_argument("--fixer-model", default=None, help="Override model for fixer.")
     p.add_argument("--max-rounds", type=int, default=10, metavar="N")
     p.add_argument("--until-clean", type=int, default=2, metavar="N")
-    p.add_argument("--max-cost-usd", type=float, default=5.00, metavar="FLOAT")
+    p.add_argument("--max-cost-usd", type=float, default=1.00, metavar="FLOAT")
     p.add_argument(
         "--base-ref",
         default="HEAD~1",
@@ -116,7 +128,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["planted", "perturb", "clean", "all"],
         default="all",
     )
-    canary.add_argument("--model", default="claude-sonnet-4-6")
+    canary.add_argument("--model", default="claude-haiku-4-5-20251001")
 
     # --- replay-am (stub) ---
     replay = subparsers.add_parser(
@@ -144,35 +156,59 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_classic(args: argparse.Namespace) -> NoReturn:
     """Execute the classic audit+fix loop and exit with appropriate code."""
-    from anneal.config import AnnealConfig, MissingCredentials, load_env
-    from anneal.cost import CostTracker
+    from anneal.config import AnnealConfig, MissingCredentials, load_env, resolve_tier
     from anneal.audit.pipeline_auditor import PipelineAuditor
     from anneal.fix.default_fixer import DefaultFixer
-    from anneal.llm.claude import ClaudeLLM
+    from anneal.llm.factory import build_llm
     from anneal.loop_classic import anneal_classic
 
-    # --- Load .env from anneal root ---
+    # --- Load .env from anneal root and merge with shell env ---
     anneal_root = _find_anneal_root()
-    env: dict[str, str] = {}
+    file_env: dict[str, str] = {}
     if anneal_root:
-        env = load_env(anneal_root)
+        file_env = load_env(anneal_root)
+    # Shell env takes precedence over .env file
+    api_keys: dict[str, str] = {**file_env, **{k: v for k, v in os.environ.items() if v}}
 
-    # --- Resolve ANTHROPIC_API_KEY ---
-    api_key = env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print(
-            "anneal: ANTHROPIC_API_KEY not set. "
-            "Add it to the anneal .env or export it in your shell.",
-            file=sys.stderr,
+    # --- Resolve tier → per-role (provider, model) defaults ---
+    tier = getattr(args, "tier", "balanced") or "balanced"
+    tier_map = resolve_tier(tier)
+
+    # --- Apply override priority for auditor role ---
+    # --{role}-model > --model > tier default model
+    # --provider > tier default provider for this role
+    global_model_override = getattr(args, "model", None)
+    global_provider_override = getattr(args, "provider", None)
+
+    def _resolve_role(role: str, role_model_attr: str) -> tuple[str, str]:
+        """Return (provider, model) for a role, applying CLI overrides."""
+        role_defaults = tier_map[role]
+        provider = global_provider_override or role_defaults["provider"]
+        model = (
+            getattr(args, role_model_attr, None)
+            or global_model_override
+            or role_defaults["model"]
         )
+        return provider, model
+
+    auditor_provider, auditor_model = _resolve_role("auditor", "auditor_model")
+    fixer_provider, fixer_model = _resolve_role("fixer", "fixer_model")
+
+    # --- Print resolved per-role config ---
+    print(f"anneal classic  tier={tier}")
+    print(f"  auditor  provider={auditor_provider}  model={auditor_model}")
+    print(f"  fixer    provider={fixer_provider}  model={fixer_model}")
+
+    # --- Build LLM adapters ---
+    try:
+        auditor_llm = build_llm(auditor_provider, auditor_model, api_keys)
+        fixer_llm = build_llm(fixer_provider, fixer_model, api_keys)
+    except MissingCredentials as exc:
+        print(f"anneal: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
-    # --- Build components ---
-    os.environ.setdefault("ANTHROPIC_API_KEY", api_key)
-    model = getattr(args, "model", "claude-sonnet-4-6") or "claude-sonnet-4-6"
-    llm = ClaudeLLM(model=model, api_key=api_key)
-    auditor = PipelineAuditor(llm)
-    fixer = DefaultFixer(llm)
+    auditor = PipelineAuditor(auditor_llm)
+    fixer = DefaultFixer(fixer_llm)
 
     # --- Resolve repo and base_ref ---
     repo = Path(args.repo) if args.repo else Path.cwd()
@@ -203,9 +239,9 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
         log_dir=log_dir,
         auditor=auditor,
         fixer=fixer,
-        model=model,
-        auditor_model=getattr(args, "auditor_model", None),
-        fixer_model=getattr(args, "fixer_model", None),
+        model=auditor_model,
+        auditor_model=auditor_model,
+        fixer_model=fixer_model,
     )
 
     result = anneal_classic(cfg)

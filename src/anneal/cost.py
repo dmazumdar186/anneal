@@ -1,15 +1,19 @@
 """Token counter and per-run budget enforcement.
 
-Pricing table (USD per 1 million tokens, blended input+output proxy):
-    claude-sonnet-4-6 : $5.00   (Anthropic list: $3 in / $15 out → ~$9 blended,
-                                  but we use $5 as a conservative mid estimate
-                                  skewed toward input-heavy audit workloads)
-    claude-opus-4-7   : $25.00  (Anthropic list: $15 in / $75 out → ~$45 blended,
-                                  but anneal prompts are long-input / short-output;
-                                  $25 is a realistic working estimate)
-    gpt-5             : $8.00   (OpenAI list not final as of scaffold date; $8 used
-                                  as a reasonable midpoint until official pricing)
-    <unknown>         : $10.00  (conservative fallback for any model not in the table)
+Pricing table (USD per 1 million tokens, blended input+output proxy).
+Updated 2026-05-13. Sources: anthropic.com/pricing and openrouter.ai/models.
+
+Anthropic direct (via ClaudeLLM):
+    claude-haiku-4-5-20251001 / claude-haiku-4-5 : $2.00  (~$1 in / $5 out blended)
+    claude-sonnet-4-6                             : $5.00  (~$3 in / $15 out blended)
+    claude-opus-4-7                               : $25.00 (~$15 in / $75 out blended)
+
+OpenRouter (via OpenRouterLLM — model IDs as OpenRouter slugs):
+    google/gemini-2.5-flash                  : $0.30  (~$0.075 in / $0.30 out)
+    deepseek/deepseek-chat                   : $0.50
+    meta-llama/llama-3.3-70b-instruct        : $0.40
+    openai/gpt-5                             : $8.00  (OpenAI via OpenRouter, ~5% markup)
+    anthropic/claude-haiku-4-5               : $2.10  (Haiku via OpenRouter, ~5% markup)
 
 All prices are rough proxies. The purpose is budget-gate enforcement (abort before
 runaway cost), not billing reconciliation.
@@ -17,14 +21,29 @@ runaway cost), not billing reconciliation.
 
 from __future__ import annotations
 
-_PRICE_PER_M: dict[str, float] = {
-    "claude-sonnet-4-6": 5.0,
-    "claude-opus-4-7": 25.0,
-    "gpt-5": 8.0,
+# USD per 1M tokens, blended input+output proxy. Updated 2026-05-13.
+# Source: anthropic.com/pricing and openrouter.ai/models.
+_PRICES_USD_PER_MILLION: dict[str, float] = {
+    # Anthropic direct (via ClaudeLLM)
+    "claude-haiku-4-5-20251001": 2.0,    # ~$1 in / $5 out blended
+    "claude-haiku-4-5": 2.0,             # alias
+    "claude-sonnet-4-6": 5.0,            # ~$3 in / $15 out blended
+    "claude-opus-4-7": 25.0,             # ~$15 in / $75 out blended
+    # OpenRouter (via OpenRouterLLM) — model IDs as OpenRouter slugs
+    "google/gemini-2.5-flash": 0.30,     # cheap; ~$0.075 in / $0.30 out
+    "deepseek/deepseek-chat": 0.50,
+    "meta-llama/llama-3.3-70b-instruct": 0.40,
+    "openai/gpt-5": 8.0,                 # OpenAI via OpenRouter (small markup)
+    "anthropic/claude-haiku-4-5": 2.1,   # Haiku via OpenRouter (~5% markup over direct)
 }
-_DEFAULT_PRICE_PER_M = 10.0
+# Fallback for unknown models
+_DEFAULT_PRICE = 10.0
 
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+# Keep legacy name as alias for backward compat with any existing callers
+_PRICE_PER_M = _PRICES_USD_PER_MILLION
+_DEFAULT_PRICE_PER_M = _DEFAULT_PRICE
+
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 
 class BudgetExceeded(Exception):
@@ -50,14 +69,14 @@ class CostTracker:
 
     def _price(self, model: str) -> float:
         """Return USD per 1M tokens for the given model."""
-        return _PRICE_PER_M.get(model, _DEFAULT_PRICE_PER_M)
+        return _PRICES_USD_PER_MILLION.get(model, _DEFAULT_PRICE)
 
     def add(self, tokens_used: int, model: str | None = None) -> None:
         """Record token usage for a single LLM call.
 
         Args:
             tokens_used: Total tokens consumed (input + output).
-            model: Model name. Defaults to claude-sonnet-4-6 if None.
+            model: Model name. Defaults to claude-haiku-4-5-20251001 if None.
 
         Raises:
             BudgetExceeded: if cumulative cost now exceeds max_usd.
