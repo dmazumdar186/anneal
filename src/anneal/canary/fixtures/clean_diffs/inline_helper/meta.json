@@ -1,0 +1,9 @@
+{
+  "name": "inline_helper",
+  "category": "clean_diff",
+  "description": "Helper _clamp_value inlined into clamp; behavior identical.",
+  "expected_finding_signature_regex": null,
+  "language": "python",
+  "expected_verdict": "PASS",
+  "expected_findings_count": 0
+}

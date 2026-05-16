@@ -1,0 +1,9 @@
+{
+  "name": "rename_variable",
+  "category": "clean_diff",
+  "description": "Pure variable rename (result -> payload); no behavior change.",
+  "expected_finding_signature_regex": null,
+  "language": "python",
+  "expected_verdict": "PASS",
+  "expected_findings_count": 0
+}
