@@ -1,0 +1,11 @@
+{
+  "name": "off_by_one_perturbations",
+  "category": "perturbation",
+  "base_bug": "off_by_one",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "MEDIUM",
+  "expected_finding_signature_regex": "(?i)(off[- ]?by[- ]?one|range\\(\\s*1|missing|starts? at 1|index 0|first element|first item)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}

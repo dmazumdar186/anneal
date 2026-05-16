@@ -1,0 +1,11 @@
+{
+  "name": "integer_overflow_perturbations",
+  "category": "perturbation",
+  "base_bug": "integer_overflow",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "LOW",
+  "expected_finding_signature_regex": "(?i)(overflow|32[- ]?bit|mask|unbounded|arbitrary.?precision|wrong.?assumption|mental.?model|C.style)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}

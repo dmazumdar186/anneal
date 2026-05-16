@@ -1,0 +1,11 @@
+{
+  "name": "sql_injection_perturbations",
+  "category": "perturbation",
+  "base_bug": "sql_injection",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "HIGH",
+  "expected_finding_signature_regex": "(?i)(sql.?inject|unsanitized|f.?string|string.?format|parameteriz|user.?input|injection|escape)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}

@@ -1,0 +1,11 @@
+{
+  "name": "wrong_comparator_perturbations",
+  "category": "perturbation",
+  "base_bug": "wrong_comparator",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "MEDIUM",
+  "expected_finding_signature_regex": "(?i)(identity|`is`|is.*compar|equality|==|wrong.*operator|compar.*identity|int.*cache|CPython|sentinel)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}

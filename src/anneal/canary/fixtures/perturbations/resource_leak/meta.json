@@ -1,0 +1,11 @@
+{
+  "name": "resource_leak_perturbations",
+  "category": "perturbation",
+  "base_bug": "resource_leak",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "MEDIUM",
+  "expected_finding_signature_regex": "(?i)(resource.?leak|file.?handle|file.?descriptor|close|with.?statement|context.?manager|unclosed|leak)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}

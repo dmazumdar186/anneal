@@ -1,0 +1,11 @@
+{
+  "name": "infinite_loop_perturbations",
+  "category": "perturbation",
+  "base_bug": "infinite_loop",
+  "variants": ["v1_renamed.py", "v2_reformatted.py", "v3_restructured.py"],
+  "severity": "HIGH",
+  "expected_finding_signature_regex": "(?i)(infinite.?loop|hang|spin|never.?terminat|while.*true|never.*exit|deadlock|block|drain|queue.*stuck)",
+  "language": "python",
+  "should_catch_in_round": 1,
+  "min_pass_rate": 0.9
+}
