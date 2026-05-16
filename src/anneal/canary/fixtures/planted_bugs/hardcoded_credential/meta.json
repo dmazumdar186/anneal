@@ -1,0 +1,10 @@
+{
+  "name": "hardcoded_credential",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "hardcoded-credential",
+  "description": "API key stored as a string literal in source code; anyone with read access to the repo can extract and abuse it.",
+  "expected_finding_signature_regex": "(?i)(hardcoded|hard.?coded|credential|secret|api.?key|literal|environ|os\\.environ|plaintext|exposed)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

@@ -1,0 +1,10 @@
+{
+  "name": "null_deref",
+  "category": "planted_bug",
+  "severity": "MEDIUM",
+  "bug_type": "null-dereference",
+  "description": "dict.get() may return None; subscripting None raises TypeError.",
+  "expected_finding_signature_regex": "(?i)(null|none|dereference|attribute.?error|type.?error|key.?error|not.?check|missing.*check|unguarded|optional)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

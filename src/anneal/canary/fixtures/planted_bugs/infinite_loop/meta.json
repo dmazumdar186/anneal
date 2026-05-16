@@ -1,0 +1,10 @@
+{
+  "name": "infinite_loop",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "infinite-loop",
+  "description": "Failed processor calls never remove the item from the queue, causing the while loop to spin forever on any persistent failure.",
+  "expected_finding_signature_regex": "(?i)(infinite.?loop|hang|spin|never.?terminat|while.*true|never.*exit|deadlock|block|drain|queue.*stuck)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

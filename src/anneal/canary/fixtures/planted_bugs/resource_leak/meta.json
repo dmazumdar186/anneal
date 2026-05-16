@@ -1,0 +1,10 @@
+{
+  "name": "resource_leak",
+  "category": "planted_bug",
+  "severity": "MEDIUM",
+  "bug_type": "resource-leak",
+  "description": "File handle opened without a `with` block; early return path never calls f.close(), leaking the file descriptor.",
+  "expected_finding_signature_regex": "(?i)(resource.?leak|file.?handle|file.?descriptor|close|with.?statement|context.?manager|unclosed|leak)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

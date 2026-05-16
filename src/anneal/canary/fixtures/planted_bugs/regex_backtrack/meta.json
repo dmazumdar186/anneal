@@ -1,0 +1,10 @@
+{
+  "name": "regex_backtrack",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "catastrophic-backtracking",
+  "description": "Nested quantifiers `(a+[ \\t]*)+` cause exponential backtracking on strings that partially match but ultimately fail, enabling ReDoS.",
+  "expected_finding_signature_regex": "(?i)(backtrack|redos|nested.?quantif|catastrophic|exponential|regex|re\\.|polynomial|denial.?of.?service)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

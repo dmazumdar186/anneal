@@ -1,0 +1,10 @@
+{
+  "name": "missing_error_handling",
+  "category": "planted_bug",
+  "severity": "MEDIUM",
+  "bug_type": "missing-error-handling",
+  "description": "HTTP response status is never checked; a 4xx/5xx error body is silently parsed as a successful payload.",
+  "expected_finding_signature_regex": "(?i)(error.?handl|status.?code|http.*error|unhandled|exception|4[0-9]{2}|5[0-9]{2}|unchecked|response.*check)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

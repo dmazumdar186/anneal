@@ -1,0 +1,10 @@
+{
+  "name": "sql_injection",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "sql-injection",
+  "description": "User-supplied input is interpolated directly into an SQL string via f-string, enabling arbitrary SQL execution.",
+  "expected_finding_signature_regex": "(?i)(sql.?inject|unsanitized|f.?string|string.?format|parameteriz|user.?input|injection|escape)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

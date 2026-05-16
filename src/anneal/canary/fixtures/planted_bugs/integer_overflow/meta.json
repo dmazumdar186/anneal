@@ -1,0 +1,10 @@
+{
+  "name": "integer_overflow",
+  "category": "planted_bug",
+  "severity": "LOW",
+  "bug_type": "integer-overflow-assumption",
+  "description": "Code applies a 32-bit mask while assuming C-style overflow semantics; Python ints are unbounded and never overflow, making the mental model misleading.",
+  "expected_finding_signature_regex": "(?i)(overflow|32[- ]?bit|mask|unbounded|arbitrary.?precision|wrong.?assumption|mental.?model|C.style)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

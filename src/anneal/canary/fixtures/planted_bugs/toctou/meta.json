@@ -1,0 +1,10 @@
+{
+  "name": "toctou",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "toctou",
+  "description": "os.path.exists() check is not atomic with the subsequent open(); another process can create the file in between.",
+  "expected_finding_signature_regex": "(?i)(toctou|time.of.check|time.of.use|race|atomic|exists.*open|check.*use|non.?atomic)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

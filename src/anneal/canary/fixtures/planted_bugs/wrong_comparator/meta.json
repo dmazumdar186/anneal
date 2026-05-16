@@ -1,0 +1,10 @@
+{
+  "name": "wrong_comparator",
+  "category": "planted_bug",
+  "severity": "MEDIUM",
+  "bug_type": "wrong-comparator",
+  "description": "`is` used for integer equality check; works for CPython-cached small ints but silently fails for values outside the cache range (-5..256).",
+  "expected_finding_signature_regex": "(?i)(identity|`is`|is.*compar|equality|==|wrong.*operator|compar.*identity|int.*cache|CPython|sentinel)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

@@ -1,0 +1,10 @@
+{
+  "name": "off_by_one",
+  "category": "planted_bug",
+  "severity": "MEDIUM",
+  "bug_type": "off-by-one",
+  "description": "Loop starts at index 1 instead of 0, missing the first item.",
+  "expected_finding_signature_regex": "(?i)(off[- ]?by[- ]?one|range\\(\\s*1|missing|starts? at 1|index 0|first element|first item)",
+  "language": "python",
+  "should_catch_in_round": 1
+}

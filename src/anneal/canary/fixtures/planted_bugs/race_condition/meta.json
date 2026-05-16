@@ -1,0 +1,10 @@
+{
+  "name": "race_condition",
+  "category": "planted_bug",
+  "severity": "HIGH",
+  "bug_type": "race-condition",
+  "description": "Read-modify-write on a shared counter across threads without a lock; concurrent increments silently lose updates.",
+  "expected_finding_signature_regex": "(?i)(race.?condition|thread.?safe|lock|mutex|atomic|concurrent|synchroniz|gil|increment)",
+  "language": "python",
+  "should_catch_in_round": 1
+}
