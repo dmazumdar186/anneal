@@ -121,14 +121,43 @@ def _build_parser() -> argparse.ArgumentParser:
     adversarial.add_argument("--judge-model")
     _add_common_args(adversarial)
 
-    # --- canary (stub) ---
-    canary = subparsers.add_parser("canary", help="Run the canary test suite (Phase 4).")
+    # --- canary ---
+    canary = subparsers.add_parser("canary", help="Run the canary test suite.")
     canary.add_argument(
         "--subset",
         choices=["planted", "perturb", "clean", "all"],
         default="all",
     )
-    canary.add_argument("--model", default="claude-haiku-4-5-20251001")
+    canary.add_argument(
+        "--tier",
+        choices=["cheap", "balanced", "premium"],
+        default="balanced",
+    )
+    canary.add_argument(
+        "--provider",
+        choices=["anthropic", "openrouter"],
+        default=None,
+    )
+    canary.add_argument("--model", default=None, help="Override model for all roles.")
+    canary.add_argument("--auditor-model", default=None, help="Override auditor model.")
+    canary.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=10.0,
+        metavar="FLOAT",
+        help="Budget ceiling for the full canary run (default: 10.0).",
+    )
+    canary.add_argument(
+        "--log-dir",
+        default=None,
+        help="Directory for transcript output (default: .canary/<timestamp>/).",
+    )
+    canary.add_argument(
+        "--no-save-transcripts",
+        action="store_true",
+        default=False,
+        help="Skip writing per-fixture transcript files (canary_report.json still written).",
+    )
 
     # --- replay-am (stub) ---
     replay = subparsers.add_parser(
@@ -399,6 +428,105 @@ def _run_show(args: argparse.Namespace) -> NoReturn:
     raise SystemExit(0)
 
 
+# ── Canary-mode flow ───────────────────────────────────────────────────────────
+
+
+def _run_canary(args: argparse.Namespace) -> NoReturn:
+    """Execute the canary test suite and exit with 0 (pass) or 1 (fail)."""
+    import anneal as _anneal_pkg
+    from anneal.config import MissingCredentials, load_env, resolve_tier
+    from anneal.audit.pipeline_auditor import PipelineAuditor
+    from anneal.llm.factory import build_llm
+    from anneal.cost import CostTracker
+    from anneal.canary.runner import run_canary
+
+    # --- Load .env from anneal root and merge with shell env ---
+    anneal_root = _find_anneal_root()
+    file_env: dict[str, str] = {}
+    if anneal_root:
+        file_env = load_env(anneal_root)
+    api_keys: dict[str, str] = {**file_env, **{k: v for k, v in os.environ.items() if v}}
+
+    # --- Resolve tier → per-role defaults ---
+    tier = getattr(args, "tier", "balanced") or "balanced"
+    tier_map = resolve_tier(tier)
+
+    global_model_override = getattr(args, "model", None)
+    global_provider_override = getattr(args, "provider", None)
+
+    auditor_defaults = tier_map["auditor"]
+    auditor_provider = global_provider_override or auditor_defaults["provider"]
+    auditor_model = (
+        getattr(args, "auditor_model", None)
+        or global_model_override
+        or auditor_defaults["model"]
+    )
+
+    judge_defaults = tier_map["judge"]
+    judge_model = judge_defaults["model"]
+
+    # --- Print resolved config ---
+    print(f"anneal canary  tier={tier}  subset={args.subset}")
+    print(f"  auditor  provider={auditor_provider}  model={auditor_model}")
+    print(f"  judge    model={judge_model}  (informational — canary uses auditor only)")
+
+    # --- Build auditor LLM ---
+    try:
+        auditor_llm = build_llm(auditor_provider, auditor_model, api_keys)
+    except MissingCredentials as exc:
+        print(f"anneal: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+    auditor = PipelineAuditor(auditor_llm)
+
+    # --- Fixtures dir (bundled) ---
+    fixtures_dir = Path(_anneal_pkg.__file__).parent / "canary" / "fixtures"
+
+    # --- Log dir ---
+    if args.log_dir:
+        log_dir = Path(args.log_dir)
+    else:
+        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        log_dir = Path.cwd() / ".canary" / ts
+
+    # --- Cost tracker ---
+    tracker = CostTracker(args.max_cost_usd)
+
+    # --- Run canary ---
+    report = run_canary(
+        auditor=auditor,
+        fixtures_dir=fixtures_dir,
+        subset=args.subset,
+        log_dir=log_dir,
+        tier=tier,
+        auditor_model=auditor_model,
+        judge_model=judge_model,
+        cost_tracker=tracker,
+        save_transcripts=not args.no_save_transcripts,
+    )
+
+    # --- Print summary ---
+    print()
+    print(f"anneal canary — {'PASS' if report.overall_pass else 'FAIL'}")
+    print(f"  tier:          {report.tier}")
+    print(f"  models:        {report.models}")
+    p = report.planted_bugs
+    if p["total"] > 0:
+        print(f"  planted_bugs:  {p['caught_round_1']}/{p['total']}  rate={p['rate']:.2%}")
+    v = report.perturbations
+    if v["total"] > 0:
+        print(f"  perturbations: {v['caught']}/{v['total']}  rate={v['rate']:.2%}")
+    c = report.clean_diffs
+    if c["total"] > 0:
+        print(f"  clean_diffs:   {c['false_positives']} false-positives / {c['total']}  rate={c['rate']:.2%}")
+    print(f"  total_cost:    ${report.total_cost_usd:.4f}")
+    print(f"  overall_pass:  {report.overall_pass}")
+    if not args.no_save_transcripts:
+        print(f"  report:        {log_dir / 'canary_report.json'}")
+
+    raise SystemExit(0 if report.overall_pass else 1)
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 
@@ -420,8 +548,11 @@ def main() -> None:
     elif args.command == "show":
         _run_show(args)
 
-    elif args.command in ("canary", "replay-am"):
-        print(f"{args.command}: not yet implemented (Phase 4/5)", file=sys.stderr)
+    elif args.command == "canary":
+        _run_canary(args)
+
+    elif args.command == "replay-am":
+        print(f"{args.command}: not yet implemented (Phase 5)", file=sys.stderr)
         sys.exit(2)
 
     else:
