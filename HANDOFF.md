@@ -16,7 +16,7 @@ Public artifact + portfolio piece for a client named Bryce. Narrative ties back 
 - **Plan file (READ THIS FIRST):** `C:\Users\deban\.claude\plans\new-project-eager-hopcroft.md` — full architecture, CLI surface, tier presets, cost budget, risks, verification plan.
 - **AntiGravity workspace:** `c:\Users\deban\OneDrive\Documents\AntiGravity Project Space` — the AM client repo, **FROZEN**. Read-only context only. See CLAUDE.local.md for lockdown rules.
 
-## What's done — 22 commits, 73 unit tests passing
+## What's done — 27 commits, 73 unit tests passing
 
 | Phase | Final SHA | What landed |
 |---|---|---|
