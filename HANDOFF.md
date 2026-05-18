@@ -12,7 +12,7 @@ Public artifact + portfolio piece for a client named Bryce. Narrative ties back 
 
 ## Where things live
 
-- **Anneal repo:** `C:\Users\deban\dev\anneal\` — fresh git repo, outside OneDrive, never pushed.
+- **Anneal repo:** `C:\Users\deban\dev\anneal\` — fresh git repo, outside OneDrive. **Pushed to https://github.com/dmazumdar186/anneal (public).** `origin/master` tracks remote.
 - **Plan file (READ THIS FIRST):** `C:\Users\deban\.claude\plans\new-project-eager-hopcroft.md` — full architecture, CLI surface, tier presets, cost budget, risks, verification plan.
 - **AntiGravity workspace:** `c:\Users\deban\OneDrive\Documents\AntiGravity Project Space` — the AM client repo, **FROZEN**. Read-only context only. See CLAUDE.local.md for lockdown rules.
 
@@ -74,7 +74,7 @@ I will tell you the report results when I have them.
 - **AM is FROZEN.** Never edit `execution/infrastructure/api-proxy/`, `website/`, `website-dashboard/`, `directives/gtm_client_workflows/accessory_masters_*`, `config/accessory_masters*`, or any AM-coupled path. Read-only access to AM git history is OK (for replay-am).
 - **No AM client keys.** Anneal uses ONLY my personal keys (OpenRouter for now).
 - **No deploys to client cloud.** No `wrangler deploy`, no `vercel deploy`, no touching the AM Cloudflare or Vercel accounts.
-- **Anneal repo never pushed.** Stays local. Ask before pushing.
+- **Anneal repo is public at https://github.com/dmazumdar186/anneal.** Ask before pushing any new commits — don't auto-push after every commit.
 
 ## Working-style preferences (in CLAUDE.local.md already)
 
