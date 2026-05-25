@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from anneal.sast.base import SastFinding, SastSeverity
@@ -113,6 +114,17 @@ class SemgrepRunner:
 
         abs_files = [str(worktree / f) for f in supported_files]
 
+        # Build child env, then guarantee HOME/USERPROFILE are present.
+        # Semgrep calls Path.home() on startup (for its version-check cache).
+        # When anneal's sandbox strips the env, both vars may be absent, causing
+        # a RuntimeError before semgrep does any real work.
+        child_env = _build_child_env()
+        if not child_env.get("HOME") and not child_env.get("USERPROFILE"):
+            tmp = tempfile.gettempdir()
+            child_env["HOME"] = tmp
+            if os.name == "nt":
+                child_env["USERPROFILE"] = tmp
+
         cmd = [
             self._semgrep_path,
             "scan",
@@ -126,7 +138,7 @@ class SemgrepRunner:
             result = subprocess.run(
                 cmd,
                 cwd=worktree,
-                env=_build_child_env(),
+                env=child_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=120,  # Semgrep is slower than ruff (rule download + analysis)

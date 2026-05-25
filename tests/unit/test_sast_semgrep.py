@@ -140,6 +140,41 @@ def test_semgrep_not_installed_returns_empty_no_exception(
 # 4. Non-supported extensions filtered before subprocess is called
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 5. HOME/USERPROFILE fallback injected when env is empty
+# ---------------------------------------------------------------------------
+
+def test_semgrep_runner_sets_home_fallback_when_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HOME and USERPROFILE must be set in the child env even when _build_child_env()
+    returns a dict that contains neither (sandboxed/restricted subprocess contexts)."""
+    captured_env: dict = {}
+
+    def _capture_env(*args, **kwargs):
+        captured_env.update(kwargs.get("env") or {})
+        mock = MagicMock()
+        mock.returncode = 0
+        mock.stdout = json.dumps({"results": [], "errors": [], "version": "1.0.0"}).encode()
+        mock.stderr = b""
+        return mock
+
+    # Strip HOME/USERPROFILE from os.environ so _build_child_env() returns neither.
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("USERPROFILE", raising=False)
+    monkeypatch.setattr(subprocess, "run", _capture_env)
+
+    runner = SemgrepRunner(semgrep_path="/fake/semgrep")
+    runner.run(tmp_path, ["src/foo.py"])
+
+    assert "HOME" in captured_env, "HOME must be injected into child env when unset"
+
+
+# ---------------------------------------------------------------------------
+# 4. Non-supported extensions filtered before subprocess is called
+# ---------------------------------------------------------------------------
+
 def test_non_supported_extensions_filtered_before_invocation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
