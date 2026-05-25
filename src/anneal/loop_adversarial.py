@@ -19,7 +19,8 @@ from anneal.diff.worktree import (
     make_worktree,
 )
 from anneal.result import AnnealResult
-from anneal.runner.python_test_runner import run_python_test, write_test_file
+from anneal.runner.factory import get_test_runner_for
+from anneal.runner.python_test_runner import write_test_file
 from anneal.transcript.writer import TranscriptWriter
 
 logger = logging.getLogger(__name__)
@@ -196,7 +197,15 @@ def anneal_adversarial(cfg: AnnealConfig) -> AnnealResult:
                     logger.warning("Round %d: write_test_file failed (%s) — skipping attack", r, exc)
                     continue
 
-                test_run = run_python_test(worktree, atk.test_path, timeout=30)  # type: ignore[arg-type]
+                try:
+                    runner = get_test_runner_for(Path(atk.test_path))  # type: ignore[arg-type]
+                except ValueError as exc:
+                    logger.warning(
+                        "Round %d: no runner for %r (%s) — skipping attack",
+                        r, atk.test_path, exc,
+                    )
+                    continue
+                test_run = runner.run(worktree, atk.test_path, timeout_s=30)  # type: ignore[arg-type]
                 if test_run.failed:
                     attack_result = atk.with_evidence(test_run)
                     landed_attacks.append(atk)
