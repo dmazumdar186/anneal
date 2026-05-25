@@ -277,7 +277,7 @@ def build_default_repo_graph(worktree: Path):
 
 
 def resolve_tier(
-    tier: Literal["cheap", "balanced", "premium", "ultra"],
+    tier: Literal["cheap", "balanced", "premium", "ultra", "cheap-gemini"],
 ) -> dict[str, dict[str, str]]:
     """Resolve a tier preset to per-role (provider, model) tuples.
 
@@ -285,10 +285,11 @@ def resolve_tier(
     ``"provider"`` and ``"model"``.
 
     Tiers (per plan):
-      cheap     -> gemini-2.5-flash for all roles, openrouter
-      balanced  -> haiku 4.5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
-      premium   -> sonnet 4.6 for audit/fix/red/blue (anthropic), haiku 4.5 for judge (anthropic)
-      ultra     -> opus 4.7 for audit/fix/red/blue (anthropic), sonnet 4.6 for judge (anthropic)
+      cheap        -> gemini-2.5-flash for all roles, openrouter
+      cheap-gemini -> gemini-2.5-flash for all roles, direct gemini provider (GEMINI_API_KEY)
+      balanced     -> haiku 4.5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
+      premium      -> sonnet 4.6 for audit/fix/red/blue (anthropic), haiku 4.5 for judge (anthropic)
+      ultra        -> opus 4.7 for audit/fix/red/blue (anthropic), sonnet 4.6 for judge (anthropic)
 
     Example::
 
@@ -299,6 +300,15 @@ def resolve_tier(
             "red":     {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
             "blue":    {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
             "judge":   {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
+        }
+
+        >>> resolve_tier("cheap-gemini")
+        {
+            "auditor": {"provider": "gemini", "model": "gemini-2.5-flash"},
+            "fixer":   {"provider": "gemini", "model": "gemini-2.5-flash"},
+            "red":     {"provider": "gemini", "model": "gemini-2.5-flash"},
+            "blue":    {"provider": "gemini", "model": "gemini-2.5-flash"},
+            "judge":   {"provider": "gemini", "model": "gemini-2.5-flash"},
         }
 
         >>> resolve_tier("balanced")
@@ -329,15 +339,16 @@ def resolve_tier(
         }
 
     Args:
-        tier: One of "cheap", "balanced", "premium", "ultra".
+        tier: One of "cheap", "cheap-gemini", "balanced", "premium", "ultra".
 
     Returns:
         Dict mapping role → {"provider": ..., "model": ...}.
 
     Raises:
-        ValueError: If tier is not one of the three valid values.
+        ValueError: If tier is not one of the valid values.
     """
     _GEMINI_FLASH = {"provider": "openrouter", "model": "google/gemini-2.5-flash"}
+    _GEMINI_FLASH_DIRECT = {"provider": "gemini", "model": "gemini-2.5-flash"}
     _HAIKU = {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"}
     _SONNET = {"provider": "anthropic", "model": "claude-sonnet-4-6"}
     _OPUS_4_7 = {"provider": "anthropic", "model": "claude-opus-4-7"}
@@ -349,6 +360,14 @@ def resolve_tier(
             "red":     _GEMINI_FLASH,
             "blue":    _GEMINI_FLASH,
             "judge":   _GEMINI_FLASH,
+        }
+    elif tier == "cheap-gemini":
+        return {
+            "auditor": _GEMINI_FLASH_DIRECT,
+            "fixer":   _GEMINI_FLASH_DIRECT,
+            "red":     _GEMINI_FLASH_DIRECT,
+            "blue":    _GEMINI_FLASH_DIRECT,
+            "judge":   _GEMINI_FLASH_DIRECT,
         }
     elif tier == "balanced":
         return {
@@ -376,5 +395,5 @@ def resolve_tier(
         }
     else:
         raise ValueError(
-            f"Unknown tier {tier!r}. Valid values are: 'cheap', 'balanced', 'premium', 'ultra'."
+            f"Unknown tier {tier!r}. Valid values are: 'cheap', 'cheap-gemini', 'balanced', 'premium', 'ultra'."
         )

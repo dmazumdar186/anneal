@@ -1,7 +1,7 @@
 """Token counter and per-run budget enforcement.
 
 Pricing table (USD per 1 million tokens). Updated 2026-05-25.
-Sources: anthropic.com/pricing and openrouter.ai/models.
+Sources: anthropic.com/pricing and openrouter.ai/models and ai.google.dev/pricing.
 
 Anthropic direct (via ClaudeLLM) — full per-token-type pricing:
     claude-haiku-4-5-20251001 / claude-haiku-4-5:
@@ -10,6 +10,11 @@ Anthropic direct (via ClaudeLLM) — full per-token-type pricing:
         input $3/M, cache_read $0.30/M, cache_write $3.75/M, output $15/M
     claude-opus-4-7:
         input $15/M, cache_read $1.50/M, cache_write $18.75/M, output $75/M
+
+Google Gemini direct (via GeminiLLM — model IDs as Gemini identifiers):
+    gemini-2.5-flash:
+        input $0.075/M, cache_read $0.01875/M (0.25× input),
+        cache_write $0.10/M (1.33× input), output $0.30/M
 
 OpenRouter (via OpenRouterLLM — model IDs as OpenRouter slugs):
     Caching is NOT uniformly supported via OpenRouter; flat blended rates used.
@@ -77,6 +82,16 @@ def _flat(blended: float) -> _ModelPricing:
     }
 
 
+# Gemini direct pricing (via GeminiLLM). Cache discount is 0.25× input (Gemini standard).
+_GEMINI_PRICES: dict[str, _ModelPricing] = {
+    "gemini-2.5-flash": {
+        "input": 0.075,
+        "cache_read": 0.01875,   # 0.25 × input
+        "cache_write": 0.10,     # ~1.33 × input (Gemini context caching write fee)
+        "output": 0.30,
+    },
+}
+
 _OPENROUTER_PRICES: dict[str, _ModelPricing] = {
     "google/gemini-2.5-flash": _flat(0.30),
     "deepseek/deepseek-chat": _flat(0.50),
@@ -87,6 +102,7 @@ _OPENROUTER_PRICES: dict[str, _ModelPricing] = {
 
 _ALL_MODEL_PRICES: dict[str, _ModelPricing] = {
     **_ANTHROPIC_PRICES,
+    **_GEMINI_PRICES,
     **_OPENROUTER_PRICES,
 }
 
@@ -96,6 +112,7 @@ _PRICES_USD_PER_MILLION: dict[str, float] = {
     "claude-haiku-4-5": 2.0,
     "claude-sonnet-4-6": 5.0,
     "claude-opus-4-7": 25.0,
+    "gemini-2.5-flash": 0.30,           # blended estimate for legacy flat path
     "google/gemini-2.5-flash": 0.30,
     "deepseek/deepseek-chat": 0.50,
     "meta-llama/llama-3.3-70b-instruct": 0.40,

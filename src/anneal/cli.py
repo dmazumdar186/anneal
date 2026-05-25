@@ -48,13 +48,13 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--fixer", default="default", help="Fixer name or path.")
     p.add_argument(
         "--tier",
-        choices=["cheap", "balanced", "premium", "ultra"],
+        choices=["cheap", "cheap-gemini", "balanced", "premium", "ultra"],
         default="balanced",
-        help="Model preset bundle: cheap (Gemini Flash/all), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge), ultra (Opus 4.7/substantive + Sonnet/judge). Default: balanced.",
+        help="Model preset bundle: cheap (Gemini Flash via OpenRouter), cheap-gemini (Gemini Flash direct, needs GEMINI_API_KEY), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge), ultra (Opus 4.7/substantive + Sonnet/judge). Default: balanced.",
     )
     p.add_argument(
         "--provider",
-        choices=["anthropic", "openrouter"],
+        choices=["anthropic", "openrouter", "gemini"],
         default=None,
         help="Force a specific provider for all roles. Default: use tier's per-role provider.",
     )
@@ -200,12 +200,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     canary.add_argument(
         "--tier",
-        choices=["cheap", "balanced", "premium", "ultra"],
+        choices=["cheap", "cheap-gemini", "balanced", "premium", "ultra"],
         default="balanced",
     )
     canary.add_argument(
         "--provider",
-        choices=["anthropic", "openrouter"],
+        choices=["anthropic", "openrouter", "gemini"],
         default=None,
     )
     canary.add_argument("--model", default=None, help="Override model for all roles.")

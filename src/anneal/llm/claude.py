@@ -66,6 +66,9 @@ class ClaudeLLM:
         system: str,
         user: str,
         response_format: Literal["text", "json"] = "text",
+        *,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> tuple[str, int]:
         """Send prompt to Claude and return (response_text, tokens_used).
 
@@ -80,6 +83,11 @@ class ClaudeLLM:
             response_format: "json" appends a strong instruction to return only
                 valid JSON. Anthropic has no native JSON-mode flag in the
                 messages API, so we prompt-engineer it.
+            temperature: Per-call temperature override.  None falls back to
+                ``self._temperature`` (the constructor default).
+            seed: Accepted for interface compatibility but not forwarded.  The
+                Anthropic Messages API does not expose a seed parameter as of
+                2026-05.  For best-effort determinism use ``temperature=0.0``.
 
         Returns:
             (response_text, total_tokens) where total_tokens = input_tokens +
@@ -92,6 +100,9 @@ class ClaudeLLM:
         Raises:
             LLMError: Wraps any anthropic.APIError with the original as __cause__.
         """
+        effective_temperature = self._temperature if temperature is None else temperature
+        del seed  # Anthropic SDK has no seed param; accepted for protocol compat only
+
         if response_format == "json":
             user = user + _JSON_INSTRUCTION
 
@@ -109,7 +120,7 @@ class ClaudeLLM:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                temperature=self._temperature,
+                temperature=effective_temperature,
                 system=system_block,  # type: ignore[arg-type]
                 messages=[{"role": "user", "content": user}],
             )

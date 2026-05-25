@@ -43,6 +43,9 @@ class LLM(Protocol):
         system: str,
         user: str,
         response_format: Literal["text", "json"] = "text",
+        *,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> tuple[str, int]:
         """Send a prompt and return (response_text, tokens_used).
 
@@ -52,6 +55,16 @@ class LLM(Protocol):
             response_format: "text" for freeform markdown; "json" to request
                              structured JSON output (adapter may add a prompt
                              instruction or set a native JSON mode flag).
+            temperature: Optional sampling temperature override.  None means
+                         use the adapter's constructor default.  Pass 0.0 for
+                         best-effort determinism (still not guaranteed by most
+                         providers due to tied-probability nondeterminism and
+                         provider-side batching).
+            seed: Optional integer seed hint forwarded to providers that
+                  support it (e.g. OpenRouter with OpenAI/Gemini backends).
+                  Ignored silently by adapters whose provider does not accept
+                  a seed parameter (e.g. Anthropic Claude — no seed support
+                  as of 2026-05).
 
         Returns:
             (response_text, tokens_used) where tokens_used is the total of

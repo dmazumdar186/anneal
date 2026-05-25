@@ -14,6 +14,9 @@ dependencies = [
     "python-dotenv",
 ]
 
+[project.optional-dependencies]
+gemini = ["google-genai>=0.6.0"]
+
 [project.scripts]
 anneal = "anneal.cli:main"
 
