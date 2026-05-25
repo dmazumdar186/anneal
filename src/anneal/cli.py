@@ -136,6 +136,20 @@ def _build_parser() -> argparse.ArgumentParser:
     adversarial.add_argument("--red-model")
     adversarial.add_argument("--blue-model")
     adversarial.add_argument("--judge-model")
+    adversarial.add_argument(
+        "--no-parallel-judge",
+        action="store_false",
+        dest="parallel_judge",
+        default=True,
+        help="Disable parallel Judge calls and run them sequentially (useful for debugging).",
+    )
+    adversarial.add_argument(
+        "--judge-max-workers",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Maximum number of concurrent Judge threads (default 4, must be >= 1).",
+    )
     _add_common_args(adversarial)
 
     # --- canary ---
@@ -425,6 +439,15 @@ def _run_adversarial(args: argparse.Namespace) -> NoReturn:
         ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
         log_dir = repo / ".anneal" / ts
 
+    parallel_judge = getattr(args, "parallel_judge", True)
+    judge_max_workers = getattr(args, "judge_max_workers", 4)
+    if judge_max_workers < 1:
+        print(
+            f"anneal: --judge-max-workers must be >= 1, got {judge_max_workers}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     cfg = AnnealConfig(
         repo=repo,
         base_ref=ref,
@@ -442,6 +465,8 @@ def _run_adversarial(args: argparse.Namespace) -> NoReturn:
         red_model=red_model,
         blue_model=blue_model,
         judge_model=judge_model,
+        parallel_judge=parallel_judge,
+        judge_max_workers=judge_max_workers,
     )
 
     result = anneal_adversarial(cfg)

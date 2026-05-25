@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -180,41 +181,87 @@ def anneal_adversarial(cfg: AnnealConfig) -> AnnealResult:
             landed_attacks: list[Attack] = []
             landed_results: list[AttackResult] = []
 
-            for atk in red_attacks.attacks:
-                if atk.kind == "test":
-                    # Write test file — write_test_file performs the path-traversal
-                    # security check internally; raises ValueError if path escapes worktree.
-                    try:
-                        write_test_file(worktree, atk)
-                    except (ValueError, OSError) as exc:
-                        logger.warning("Round %d: write_test_file failed (%s) — skipping attack", r, exc)
-                        continue
+            # Partition attacks by kind — test attacks are run sequentially
+            # (they mutate the worktree); finding attacks are judged in parallel.
+            finding_attacks = [atk for atk in red_attacks.attacks if atk.kind == "finding"]
+            test_attacks = [atk for atk in red_attacks.attacks if atk.kind == "test"]
 
-                    test_run = run_python_test(worktree, atk.test_path, timeout=30)  # type: ignore[arg-type]
-                    if test_run.failed:
-                        attack_result = atk.with_evidence(test_run)
-                        landed_attacks.append(atk)
-                        landed_results.append(attack_result)
+            # ── Test attacks: sequential (worktree mutation) ──────────────────
+            for atk in test_attacks:
+                # Write test file — write_test_file performs the path-traversal
+                # security check internally; raises ValueError if path escapes worktree.
+                try:
+                    write_test_file(worktree, atk)
+                except (ValueError, OSError) as exc:
+                    logger.warning("Round %d: write_test_file failed (%s) — skipping attack", r, exc)
+                    continue
 
-                else:  # kind == "finding"
-                    try:
-                        judgment = cfg.judge.judge(atk, current_diff, worktree)
-                    except BudgetExceeded:
-                        result = _build_result(False, r, "budget")
-                        break
+                test_run = run_python_test(worktree, atk.test_path, timeout=30)  # type: ignore[arg-type]
+                if test_run.failed:
+                    attack_result = atk.with_evidence(test_run)
+                    landed_attacks.append(atk)
+                    landed_results.append(attack_result)
 
-                    try:
-                        budget.add(judgment.tokens_used, cfg.judge_model or cfg.model)
-                    except BudgetExceeded:
-                        result = _build_result(False, r, "budget")
-                        break
+            # ── Finding attacks: parallel Judge calls ─────────────────────────
+            if finding_attacks:
+                if cfg.parallel_judge and len(finding_attacks) > 1:
+                    max_workers = min(len(finding_attacks), cfg.judge_max_workers)
+                    futures: dict[Attack, Future] = {}  # type: ignore[type-arg]
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        for atk in finding_attacks:
+                            futures[atk] = executor.submit(
+                                cfg.judge.judge, atk, current_diff, worktree
+                            )
+                    logger.debug(
+                        "adversarial round %d: judged %d attack(s) in parallel",
+                        r, len(finding_attacks),
+                    )
+                    # Collect results in original attack order (deterministic audit trail)
+                    first_exc: BaseException | None = None
+                    for atk in finding_attacks:
+                        fut = futures[atk]
+                        exc = fut.exception()
+                        if exc is not None:
+                            if isinstance(exc, BudgetExceeded):
+                                result = _build_result(False, r, "budget")
+                                first_exc = exc
+                                break
+                            if first_exc is None:
+                                first_exc = exc
+                            continue
+                        judgment = fut.result()
+                        try:
+                            budget.add(judgment.tokens_used, cfg.judge_model or cfg.model)
+                        except BudgetExceeded:
+                            result = _build_result(False, r, "budget")
+                            first_exc = BudgetExceeded()
+                            break
+                        if judgment.verdict == "valid":
+                            landed_attacks.append(atk)
+                            landed_results.append(atk.with_evidence(judgment))
+                    if first_exc is not None and not isinstance(first_exc, BudgetExceeded):
+                        raise first_exc  # re-raise non-budget exceptions
+                else:
+                    # Sequential path: parallel_judge=False or only one finding attack
+                    for atk in finding_attacks:
+                        try:
+                            judgment = cfg.judge.judge(atk, current_diff, worktree)
+                        except BudgetExceeded:
+                            result = _build_result(False, r, "budget")
+                            break
 
-                    if judgment.verdict == "valid":
-                        attack_result = atk.with_evidence(judgment)
-                        landed_attacks.append(atk)
-                        landed_results.append(attack_result)
+                        try:
+                            budget.add(judgment.tokens_used, cfg.judge_model or cfg.model)
+                        except BudgetExceeded:
+                            result = _build_result(False, r, "budget")
+                            break
 
-            # Check if we broke out of the inner for loop due to BudgetExceeded
+                        if judgment.verdict == "valid":
+                            attack_result = atk.with_evidence(judgment)
+                            landed_attacks.append(atk)
+                            landed_results.append(attack_result)
+
+            # Check if we broke out of a finding-attack loop due to BudgetExceeded
             if result is not None:
                 break
 

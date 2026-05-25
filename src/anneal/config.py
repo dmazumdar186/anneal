@@ -80,9 +80,21 @@ class AnnealConfig:
     # Set explicitly to opt-in/out regardless of directory presence.
     suppressions_path: Path | None = None
 
+    # Parallel Judge calls (T3.11)
+    # parallel_judge=True (default): finding-kind attacks are judged concurrently
+    #   via ThreadPoolExecutor — typically 3-5x wall-clock speedup for the judge phase.
+    # parallel_judge=False: sequential fallback for debugging / deterministic ordering.
+    # judge_max_workers: upper bound on concurrent Judge threads (must be >= 1).
+    parallel_judge: bool = True
+    judge_max_workers: int = 4
+
     def __post_init__(self) -> None:
         if self.audit_samples < 1:
             raise ValueError(f"audit_samples must be >= 1, got {self.audit_samples}")
+        if self.judge_max_workers < 1:
+            raise ValueError(
+                f"judge_max_workers must be >= 1, got {self.judge_max_workers}"
+            )
         if self.audit_vote_threshold < 1:
             raise ValueError(
                 f"audit_vote_threshold must be >= 1, got {self.audit_vote_threshold}"

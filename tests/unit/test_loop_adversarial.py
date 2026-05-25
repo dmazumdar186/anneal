@@ -460,3 +460,122 @@ def test_test_path_outside_worktree_skipped(tmp_path: Path) -> None:
     # The escaped path must NOT exist on the filesystem
     escaped_resolved = (tmp_path / "escape" / "test_bad.py")
     assert not escaped_resolved.exists(), "Escaped test file must not exist on disk"
+
+
+# ── Parallel Judge tests (T3.11) ───────────────────────────────────────────────
+
+
+def _mock_red_response_three_findings() -> str:
+    """JSON Red would emit for three finding-kind attacks with distinguishable claims."""
+    payload = {
+        "attacks": [
+            {
+                "kind": "finding",
+                "target_files": ["app.py"],
+                "severity": "HIGH",
+                "claim": "Finding Alpha",
+                "evidence": "Evidence A.",
+                "rationale": "Rationale A.",
+                "expected": "Validation present.",
+                "actual": "No validation.",
+            },
+            {
+                "kind": "finding",
+                "target_files": ["app.py"],
+                "severity": "MEDIUM",
+                "claim": "Finding Beta",
+                "evidence": "Evidence B.",
+                "rationale": "Rationale B.",
+                "expected": "Error handling present.",
+                "actual": "No error handling.",
+            },
+            {
+                "kind": "finding",
+                "target_files": ["app.py"],
+                "severity": "LOW",
+                "claim": "Finding Gamma",
+                "evidence": "Evidence C.",
+                "rationale": "Rationale C.",
+                "expected": "Logging present.",
+                "actual": "No logging.",
+            },
+        ]
+    }
+    return json.dumps(payload)
+
+
+def test_parallel_judge_preserves_finding_order(tmp_path: Path) -> None:
+    """With parallel_judge=True and 3 finding attacks, audit-trail order matches
+    original attack order (not the arbitrary order threads complete)."""
+    cfg = _make_adv_config(
+        tmp_path,
+        red_responses=[
+            _mock_red_response_three_findings(),
+            _mock_red_response_empty(),
+            _mock_red_response_empty(),
+        ],
+        blue_responses=[
+            _mock_blue_response("# blue fix for findings", filename="blue_fix_r1.py"),
+            _mock_blue_response_empty(),
+            _mock_blue_response_empty(),
+        ],
+        judge_responses=[
+            _mock_judge_response("valid", "Alpha confirmed."),
+            _mock_judge_response("valid", "Beta confirmed."),
+            _mock_judge_response("valid", "Gamma confirmed."),
+        ],
+        until_clean=2,
+    )
+    # Enable parallel judge explicitly
+    cfg.parallel_judge = True
+
+    result = anneal_adversarial(cfg)
+
+    assert result.converged is True
+    assert result.rounds == 3
+
+    # Round 1 should have landed all 3 findings
+    red_json = cfg.log_dir / "round_001" / "red.json"
+    data = json.loads(red_json.read_text(encoding="utf-8"))
+    assert data["landed_count"] == 3
+
+    # The landed attacks in the transcript must appear in original attack order.
+    # The transcript stores all attacks (with landed flag); filter to landed ones.
+    landed_claims = [
+        entry["claim"] for entry in data["attacks"] if entry.get("landed")
+    ]
+    assert landed_claims == ["Finding Alpha", "Finding Beta", "Finding Gamma"], (
+        f"Expected original order [Alpha, Beta, Gamma], got {landed_claims}"
+    )
+
+
+def test_parallel_judge_can_be_disabled(tmp_path: Path) -> None:
+    """With parallel_judge=False, the sequential path runs and still lands findings."""
+    cfg = _make_adv_config(
+        tmp_path,
+        red_responses=[
+            _mock_red_response_finding(claim="Sequential finding"),
+            _mock_red_response_empty(),
+            _mock_red_response_empty(),
+        ],
+        blue_responses=[
+            _mock_blue_response("# blue fix", filename="blue_fix_r1.py"),
+            _mock_blue_response_empty(),
+            _mock_blue_response_empty(),
+        ],
+        judge_responses=[
+            _mock_judge_response("valid", "Confirmed."),
+        ],
+        until_clean=2,
+    )
+    # Disable parallel judge — forces sequential fallback path
+    cfg.parallel_judge = False
+
+    result = anneal_adversarial(cfg)
+
+    assert result.converged is True
+    assert result.rounds == 3
+
+    red_json = cfg.log_dir / "round_001" / "red.json"
+    data = json.loads(red_json.read_text(encoding="utf-8"))
+    assert data["landed_count"] == 1
