@@ -8,6 +8,19 @@ anneal hardens code diffs by running an auditor+fixer loop, or a Red-vs-Blue adv
 pip install -e .
 ```
 
+## Try the examples
+
+```bash
+# Classic mode — 4 planted bugs in a payment module
+cd examples/synthetic_buggy && anneal --tier cheap HEAD~1
+
+# Adversarial mode — Red vs Blue duel on a "hardened" rate-limiter
+cd examples/adversarial_demo && anneal adversarial --tier cheap HEAD~1
+```
+
+Each example directory has a `README.md` explaining the planted bugs,
+expected output, and cost estimate.
+
 ## Quick start
 
 ```bash
