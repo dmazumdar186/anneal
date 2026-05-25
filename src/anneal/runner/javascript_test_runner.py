@@ -107,8 +107,12 @@ class JavaScriptTestRunner:
         else:
             framework = self._framework
 
-        # Normalise test_file to a string relative-or-absolute path
-        test_path_str = str(test_file)
+        # Resolve and validate test_file stays inside worktree (path traversal guard)
+        _tf = Path(test_file)
+        resolved = (_tf if _tf.is_absolute() else (worktree / _tf)).resolve()
+        if not str(resolved).startswith(str(worktree.resolve())):
+            raise ValueError(f"test_file {test_file!r} escapes worktree boundary")
+        test_path_str = str(resolved)
 
         start = time.monotonic()
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from anneal.cost import BudgetExceeded, CostTracker
@@ -109,3 +112,27 @@ def test_mixed_cache_usage_sums_correctly() -> None:
     )
     expected = 3.00 + 0.30 + 3.75 + 15.00  # = 22.05
     assert abs(tracker.total_usd - expected) < 0.01
+
+
+# ── Thread-safety tests ───────────────────────────────────────────────────────
+
+
+def test_cost_tracker_thread_safe() -> None:
+    """100 threads each add 100 tokens; no increments must be lost under concurrency."""
+    tracker = CostTracker(max_usd=1_000.0)
+    n_threads = 100
+    tokens_per_thread = 100
+    model = "claude-sonnet-4-6"
+
+    barrier = threading.Barrier(n_threads)
+
+    def _add() -> None:
+        barrier.wait()  # all threads start simultaneously
+        tracker.add(tokens_per_thread, model)
+
+    with ThreadPoolExecutor(max_workers=n_threads) as pool:
+        futures = [pool.submit(_add) for _ in range(n_threads)]
+        for f in futures:
+            f.result()  # re-raise any exception
+
+    assert tracker.total_tokens == n_threads * tokens_per_thread

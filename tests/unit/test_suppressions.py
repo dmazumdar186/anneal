@@ -102,3 +102,38 @@ def test_apply_suppressions_drops_matching_findings_and_downgrades_verdict(
     # Metadata preserved
     assert result.tokens_used == report.tokens_used
     assert result.raw_markdown == report.raw_markdown
+
+
+# ── Thread-safety tests ───────────────────────────────────────────────────────
+
+
+def test_is_suppressed_concurrent_safe(tmp_path: Path) -> None:
+    """50 threads each calling is_suppressed on a known fp must not corrupt the file."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    store_path = tmp_path / "suppressions.json"
+    store = SuppressionStore(store_path)
+    fp = "abcdef0123456789"
+    store.add(fp, "known fp")
+
+    barrier = threading.Barrier(50)
+    errors: list[Exception] = []
+
+    def _check() -> None:
+        barrier.wait()
+        try:
+            result = store.is_suppressed(fp)
+            assert result is True
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    with ThreadPoolExecutor(max_workers=50) as pool:
+        futures = [pool.submit(_check) for _ in range(50)]
+        for f in futures:
+            f.result()
+
+    assert not errors, f"Concurrent is_suppressed raised: {errors}"
+    # File must still be valid JSON after concurrent writes
+    raw = json.loads(store_path.read_text(encoding="utf-8"))
+    assert fp in raw

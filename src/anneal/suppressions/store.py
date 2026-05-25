@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,7 @@ class SuppressionStore:
         self._path = path
         # In-memory dict: fingerprint → Suppression
         self._data: dict[str, Suppression] = {}
+        self._lock = threading.Lock()
         self.load()
 
     # ── Persistence ────────────────────────────────────────────────────────────
@@ -93,38 +95,41 @@ class SuppressionStore:
 
     def add(self, fingerprint: str, reason: str) -> None:
         """Add or refresh a suppression entry."""
-        now = _now_iso()
-        existing = self._data.get(fingerprint)
-        self._data[fingerprint] = Suppression(
-            fingerprint=fingerprint,
-            reason=reason,
-            created_at=existing.created_at if existing else now,
-            last_seen_at=now,
-        )
-        self.save()
+        with self._lock:
+            now = _now_iso()
+            existing = self._data.get(fingerprint)
+            self._data[fingerprint] = Suppression(
+                fingerprint=fingerprint,
+                reason=reason,
+                created_at=existing.created_at if existing else now,
+                last_seen_at=now,
+            )
+            self.save()
 
     def remove(self, fingerprint: str) -> None:
         """Remove a suppression entry. No-op if not present."""
-        if fingerprint in self._data:
-            del self._data[fingerprint]
-            self.save()
+        with self._lock:
+            if fingerprint in self._data:
+                del self._data[fingerprint]
+                self.save()
 
     # ── Query ──────────────────────────────────────────────────────────────────
 
     def is_suppressed(self, fingerprint: str) -> bool:
         """Return True if fingerprint is suppressed; also refreshes last_seen_at."""
-        if fingerprint not in self._data:
-            return False
-        # Refresh last_seen_at
-        s = self._data[fingerprint]
-        self._data[fingerprint] = Suppression(
-            fingerprint=fingerprint,
-            reason=s.reason,
-            created_at=s.created_at,
-            last_seen_at=_now_iso(),
-        )
-        self.save()
-        return True
+        with self._lock:
+            if fingerprint not in self._data:
+                return False
+            # Refresh last_seen_at
+            s = self._data[fingerprint]
+            self._data[fingerprint] = Suppression(
+                fingerprint=fingerprint,
+                reason=s.reason,
+                created_at=s.created_at,
+                last_seen_at=_now_iso(),
+            )
+            self.save()
+            return True
 
     def list_all(self) -> list[Suppression]:
         """Return all suppressions sorted by fingerprint."""

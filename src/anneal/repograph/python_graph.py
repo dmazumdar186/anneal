@@ -209,6 +209,8 @@ class PythonRepoGraph:
     def _walk_python_files(root: Path):
         """Yield all ``.py`` files under *root*, skipping ignored directories."""
         for item in root.iterdir():
+            if item.is_symlink():
+                continue
             if item.is_dir():
                 if item.name in _SKIP_DIRS:
                     continue

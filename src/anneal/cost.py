@@ -30,6 +30,7 @@ runaway cost), not billing reconciliation.
 
 from __future__ import annotations
 
+import threading
 from typing import TypedDict
 
 
@@ -159,6 +160,7 @@ class CostTracker:
         self._total_usd: float = 0.0
         # per-model breakdown: model → {tokens, usd}
         self._breakdown: dict[str, dict[str, float | int]] = {}
+        self._lock = threading.Lock()
 
     def _pricing(self, model: str) -> _ModelPricing:
         """Return the full pricing dict for the given model."""
@@ -228,15 +230,16 @@ class CostTracker:
             # Legacy flat-rate path: blended price × total tokens.
             cost = tokens_used * self._price(model) / 1_000_000.0
 
-        self._total_tokens += tokens_used
-        self._total_usd += cost
+        with self._lock:
+            self._total_tokens += tokens_used
+            self._total_usd += cost
 
-        if model not in self._breakdown:
-            self._breakdown[model] = {"tokens": 0, "usd": 0.0}
-        self._breakdown[model]["tokens"] = int(self._breakdown[model]["tokens"]) + tokens_used
-        self._breakdown[model]["usd"] = float(self._breakdown[model]["usd"]) + cost
+            if model not in self._breakdown:
+                self._breakdown[model] = {"tokens": 0, "usd": 0.0}
+            self._breakdown[model]["tokens"] = int(self._breakdown[model]["tokens"]) + tokens_used
+            self._breakdown[model]["usd"] = float(self._breakdown[model]["usd"]) + cost
 
-        self.check()
+            self.check()
 
     def check(self) -> None:
         """Raise BudgetExceeded if current spend is already over the limit."""

@@ -68,12 +68,12 @@ class GoTestRunner:
                 timed_out=False,
             )
 
-        # Resolve package directory from test_file
+        # Resolve and validate test_file stays inside worktree (path traversal guard)
         test_path = Path(test_file)
-        if test_path.is_absolute():
-            pkg_dir = test_path.parent
-        else:
-            pkg_dir = (worktree / test_path).parent
+        resolved = (test_path if test_path.is_absolute() else (worktree / test_path)).resolve()
+        if not str(resolved).startswith(str(worktree.resolve())):
+            raise ValueError(f"test_file {test_file!r} escapes worktree boundary")
+        pkg_dir = resolved.parent
 
         cmd = [self._go_path, "test", "-json", "./..."]
 

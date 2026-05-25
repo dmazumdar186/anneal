@@ -144,13 +144,14 @@ class VotingAuditor:
         )
 
         # ── Verdict: majority vote, ties → most severe ────────────────────────
+        # Avoid most_common(1) for the tie-break path: Counter.most_common ordering
+        # is insertion-order-dependent (CPython detail, not a language guarantee).
+        # Instead, find max count explicitly then pass all tied verdicts to
+        # _most_severe so the result is deterministic regardless of insertion order.
         verdict_counts: Counter[Verdict] = Counter(r.verdict for r in reports)
-        majority_verdict = verdict_counts.most_common(1)[0][0]
-        # If there's a tie (equal counts), pick most severe among tied verdicts
-        top_count = verdict_counts[majority_verdict]
-        tied = [v for v, c in verdict_counts.items() if c == top_count]
-        if len(tied) > 1:
-            majority_verdict = _most_severe(tied)
+        max_count = max(verdict_counts.values())
+        tied = [v for v, c in verdict_counts.items() if c == max_count]
+        majority_verdict = _most_severe(tied)
 
         # ── Merge auxiliary fields from sample 1 ─────────────────────────────
         primary = reports[0]

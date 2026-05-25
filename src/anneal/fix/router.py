@@ -8,8 +8,8 @@ Usage::
 The router is USABLE but NOT wired as the loop's default — ``DefaultFixer``
 remains the loop's default fixer to preserve existing behavior.
 
-Specialized fixers are lazy-instantiated the first time they are needed and
-cached at module level so the same instance is reused across calls.
+Specialized fixers are instantiated fresh on each call so they always receive
+the correct LLM instance (no stale-None cache).
 """
 
 from __future__ import annotations
@@ -37,17 +37,6 @@ _REFACTOR_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# Module-level cache: maps fixer class → instance (populated lazily)
-_cache: dict[type, "Fixer"] = {}
-
-
-def _get_or_create(cls: type, llm) -> "Fixer":
-    """Return a cached instance of *cls*, creating it with *llm* if not yet cached."""
-    if cls not in _cache:
-        _cache[cls] = cls(llm)
-    return _cache[cls]
-
-
 def route_fixer(finding: "Finding", default: "Fixer | None" = None) -> "Fixer":
     """Return the most appropriate Fixer for the given Finding.
 
@@ -58,9 +47,10 @@ def route_fixer(finding: "Finding", default: "Fixer | None" = None) -> "Fixer":
     3. Refactor/style keywords → :class:`RefactorFixer`
     4. Fallback → *default* if provided, else :class:`DefaultFixer`
 
-    Specialized fixers are lazy-instantiated with a ``None`` LLM the first
-    time they are needed and cached at module level. Pass a *default* that
-    already holds a configured LLM when you need an LLM-capable instance.
+    A fresh fixer instance is created on every call so specialized fixers
+    always receive the correct LLM (no stale-None module-level cache).
+    The router is called per-finding; cost is dominated by LLM calls, not
+    object construction.
 
     .. note::
         The loop does not yet call ``route_fixer`` per-finding; that is a
@@ -89,15 +79,15 @@ def route_fixer(finding: "Finding", default: "Fixer | None" = None) -> "Fixer":
     text = finding.summary
 
     if _SECURITY_KEYWORDS.search(text):
-        return _get_or_create(SecurityFixer, None)
+        return SecurityFixer(None)
 
     if _TEST_KEYWORDS.search(text):
-        return _get_or_create(TestFixer, None)
+        return TestFixer(None)
 
     if _REFACTOR_KEYWORDS.search(text):
-        return _get_or_create(RefactorFixer, None)
+        return RefactorFixer(None)
 
     if default is not None:
         return default
 
-    return _get_or_create(DefaultFixer, None)
+    return DefaultFixer(None)
