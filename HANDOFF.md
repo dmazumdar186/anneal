@@ -14,11 +14,34 @@ Public artifact + portfolio piece. Narrative ties back to a past client project 
 - **Plan file:** `C:\Users\deban\.claude\plans\new-project-eager-hopcroft.md`
 - **Claude Code skill wrapper:** `~/.claude/skills/anneal/` (installed globally)
 
-## Status: v0.1 — 136 unit tests passing
+## Status: v0.1 — 138 unit tests passing
 
-### Recent session — T1–T4 implementation (2026-05-25)
+### Recent session — T1–T4 implementation + post-review hardening (2026-05-25)
 
-18 roadmap items + 1 bonus shipped across 19 commits. Tests: 73 → 136 (all mock-based, zero real API spend).
+18 roadmap items + 1 bonus + post-review hardening shipped across 22 commits. Tests: 73 → 138 (all mock-based, zero real API spend).
+
+**Post-review hardening** (after independent code-reviewer audit returned FAIL with 3 critical + 3 high findings):
+- `fa8100e` — `fix(v0.1): close 6 audit findings (concurrency, path traversal, tie-break, router cache, symlink, gemini exc)`
+  - Added `threading.Lock` to `CostTracker` (race on `_total_usd +=` under ThreadPoolExecutor)
+  - Added `threading.Lock` to `SuppressionStore` (concurrent `is_suppressed`-with-save corruption)
+  - Added path-traversal guards in JS + Go test runners (LLM-supplied paths could escape worktree)
+  - Removed module-level fixer-router cache (stale-`llm=None` instances poisoned later real-LLM calls)
+  - Added symlink-cycle guard in `repograph.python_graph._walk_python_files`
+  - Made `VotingAuditor` verdict tie-break deterministic (was insertion-order-dependent via `Counter.most_common`)
+- `cdfceae` — `fix(subprocess): force utf-8 encoding on all subprocess output to avoid cp1252 errors on Windows`
+  - Surfaced during meta-audit run: `subprocess._readerthread` defaulted to cp1252 on Windows English locale and crashed on bytes ≥ 0x80
+  - Patched `diff/patch.py` and `diff/worktree.py` git invocations with explicit `encoding="utf-8", errors="replace"`
+
+**Real-API validation (2026-05-25 with cheap-gemini tier + GEMINI_API_KEY)**:
+- T1.1 canary on `planted` subset: **8.33% catch rate** (1 of 12 — `wrong_comparator` caught; rest missed), $0.0107 total, 1 transient Gemini 503 error on `regex_backtrack` fixture
+- T1.1 meta-audit (`anneal classic HEAD~1 --tier cheap-gemini`): ran end-to-end, exited cleanly with `reason=patch_conflict`, $0.0064
+- **Important caveat**: the canary runner uses single-shot auditor only — it does NOT exercise the new SAST pre-pass, multi-sample voting, repo-graph context, or semantic-diff features. The 8.33% is a baseline for "Gemini Flash auditor with no help"; the full v0.1 pipeline (--audit-samples 3 + SAST on) is expected to be significantly higher. Run with `--audit-samples 3 --vote-threshold 2` for a fairer measurement (cost ~3x).
+
+**Known gaps** (not addressed this session):
+- Gemini adapter has no second-level retry on transient 503/UNAVAILABLE (relies only on google-genai SDK's tenacity); transient errors get reported as fixture misses with traceback. Worth a small retry wrapper in `llm/gemini.py`.
+- Adversarial-mode determinism: T4.14's `_apply_determinism()` only patches classic-loop auditor/fixer LLMs; adversarial Red/Blue/Judge LLMs still un-patched.
+
+
 
 | Tier | Item | Commit | Status |
 |---|---|---|---|
