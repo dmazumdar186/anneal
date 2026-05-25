@@ -52,3 +52,60 @@ def test_summary_shape() -> None:
     assert "total_usd" in s
     assert "by_model" in s or "per_model" in s
     assert s["total_usd"] > 0
+
+
+# ── Cache-aware pricing tests ──────────────────────────────────────────────────
+
+
+def test_cache_read_tokens_billed_at_tenth_rate() -> None:
+    """1M cache-read tokens on Sonnet ($0.30/M) → $0.30, not $3.00 (flat input rate).
+
+    Sonnet input = $3.00/M; cache_read = $0.30/M (0.1× input).
+    """
+    tracker = CostTracker(max_usd=100.0)
+    tracker.add(
+        tokens_used=1_000_000,
+        model="claude-sonnet-4-6",
+        cache_read_tokens=1_000_000,
+        output_tokens=0,
+    )
+    # Expect $0.30 (cache_read rate), NOT $3.00 (input rate)
+    assert abs(tracker.total_usd - 0.30) < 0.01
+
+
+def test_cache_creation_tokens_billed_at_write_rate() -> None:
+    """1M cache-creation tokens on Sonnet ($3.75/M) → $3.75, not $3.00 (flat input).
+
+    Sonnet input = $3.00/M; cache_write = $3.75/M (1.25× input).
+    """
+    tracker = CostTracker(max_usd=100.0)
+    tracker.add(
+        tokens_used=1_000_000,
+        model="claude-sonnet-4-6",
+        cache_creation_tokens=1_000_000,
+        output_tokens=0,
+    )
+    # Expect $3.75 (cache_write rate), NOT $3.00 (input rate)
+    assert abs(tracker.total_usd - 3.75) < 0.01
+
+
+def test_mixed_cache_usage_sums_correctly() -> None:
+    """Mixed token categories on Sonnet compute weighted cost correctly.
+
+    Breakdown (all 1M each, total tokens_used = 4M):
+    - 1M uncached input:        1M × $3.00/M = $3.00
+    - 1M cache_read:            1M × $0.30/M = $0.30
+    - 1M cache_creation:        1M × $3.75/M = $3.75
+    - 1M output:                1M × $15.00/M = $15.00
+    Expected total:  $22.05
+    """
+    tracker = CostTracker(max_usd=100.0)
+    tracker.add(
+        tokens_used=4_000_000,
+        model="claude-sonnet-4-6",
+        cache_read_tokens=1_000_000,
+        cache_creation_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    expected = 3.00 + 0.30 + 3.75 + 15.00  # = 22.05
+    assert abs(tracker.total_usd - expected) < 0.01
