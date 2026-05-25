@@ -261,18 +261,31 @@ class PipelineAuditor:
         self._llm = llm
         self._prompt = _load_prompt(prompt_path or _DEFAULT_PROMPT_PATH)
 
-    def audit(self, diff: str, repo_root: Path) -> AuditReport:  # noqa: ARG002  # Protocol requires it
+    def audit(self, diff: str, repo_root: Path, *, sast_findings: str = "") -> AuditReport:  # noqa: ARG002  # Protocol requires it
         """Run the pipeline-auditor prompt against diff and parse findings.
 
         Args:
-            diff: Unified diff string to audit.
-            repo_root: Path to the repository root (available for context; not
-                used by the base auditor but part of the Auditor Protocol).
+            diff:          Unified diff string to audit.
+            repo_root:     Path to the repository root (available for context; not
+                           used by the base auditor but part of the Auditor Protocol).
+            sast_findings: Optional pre-pass SAST output as a markdown string.
+                           When non-empty, a "## Pre-pass findings" section is
+                           prepended to the user message so the LLM can focus
+                           on issues the deterministic pass did not already catch.
 
         Returns:
             Parsed AuditReport.
         """
+        sast_block = ""
+        if sast_findings:
+            sast_block = (
+                "## Pre-pass findings (deterministic SAST — DO NOT re-flag these)\n\n"
+                f"{sast_findings}\n\n"
+                "---\n\n"
+            )
+
         user_msg = (
+            f"{sast_block}"
             "Below is the diff to audit. Review it carefully according to your instructions.\n\n"
             "```diff\n"
             f"{diff}\n"

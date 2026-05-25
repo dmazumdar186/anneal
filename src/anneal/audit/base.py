@@ -71,6 +71,14 @@ def finding_fingerprint(f: Finding) -> str:
 class Auditor(Protocol):
     """Protocol that all auditor implementations must satisfy."""
 
-    def audit(self, diff: str, repo_root: Path) -> AuditReport:
-        """Audit a diff and return a structured AuditReport."""
+    def audit(self, diff: str, repo_root: Path, *, sast_findings: str = "") -> AuditReport:
+        """Audit a diff and return a structured AuditReport.
+
+        Args:
+            diff:         Unified diff string to audit.
+            repo_root:    Path to the repository root.
+            sast_findings: Optional pre-pass SAST output as a markdown string.
+                           When non-empty, the auditor should treat these as
+                           known issues and focus on what SAST cannot catch.
+        """
         ...

@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from anneal.audit.base import finding_fingerprint
-from anneal.config import AnnealConfig
+from anneal.config import AnnealConfig, build_default_sast_runner
 from anneal.cost import BudgetExceeded, CostTracker
+from anneal.sast.base import format_findings_as_markdown
 from anneal.diff.patch import ApplyResult, apply_patch
 from anneal.diff.worktree import (
     GitOperationError,
@@ -198,6 +199,17 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
     result: AnnealResult | None = None
 
+    # ── Resolve SAST runner (auto-detect once, before the loop) ───────────────
+    if cfg.sast_runners is None:
+        # Auto-detect: use ruff/semgrep if available, None if neither on PATH
+        _sast_runner = build_default_sast_runner()
+    elif len(cfg.sast_runners) == 0:
+        # Explicitly disabled
+        _sast_runner = None
+    else:
+        from anneal.sast.composite import CompositeSastRunner  # noqa: PLC0415
+        _sast_runner = CompositeSastRunner(cfg.sast_runners)
+
     try:
         for r in range(1, cfg.max_rounds + 1):
             # Budget gate at the TOP of every round (plan says "wrap each LLM
@@ -210,8 +222,27 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             current_diff = git_diff(worktree, cfg.base_ref)
 
+            # ── SAST pre-pass ──────────────────────────────────────────────────
+            sast_md = ""
+            if _sast_runner is not None:
+                # Parse changed files from the diff ("+++ b/<path>" lines)
+                changed_files = [
+                    line[6:]  # strip "+++ b/"
+                    for line in current_diff.splitlines()
+                    if line.startswith("+++ b/")
+                ]
+                sast_findings_list = _sast_runner.run(worktree, changed_files)
+                sast_md = format_findings_as_markdown(sast_findings_list)
+            else:
+                sast_findings_list = []
+
+            logger.info("Round %d: sast: %d finding(s)", r, len(sast_findings_list))
+
             try:
-                report = cfg.auditor.audit(current_diff, worktree)
+                if sast_md:
+                    report = cfg.auditor.audit(current_diff, worktree, sast_findings=sast_md)
+                else:
+                    report = cfg.auditor.audit(current_diff, worktree)
             except BudgetExceeded:
                 result = _build_result(False, r, "budget")
                 break

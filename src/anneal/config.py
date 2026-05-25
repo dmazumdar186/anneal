@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from anneal.adversarial.red import RedAgent
     from anneal.adversarial.blue import BlueAgent
     from anneal.adversarial.judge import Judge
+    from anneal.sast.base import SastRunner
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,12 @@ class AnnealConfig:
     red: "RedAgent | None" = None
     blue: "BlueAgent | None" = None
     judge: "Judge | None" = None
+
+    # SAST pre-pass (T2.6c)
+    # None  = auto-detect (use ruff+semgrep if on PATH, skip silently if not)
+    # []    = explicitly disabled (no SAST pre-pass)
+    # [...]  = explicit list of runners to use
+    sast_runners: "list[SastRunner] | None" = None
 
     # Model overrides (None = use default)
     model: str = "claude-haiku-4-5-20251001"
@@ -123,6 +130,42 @@ def load_env(repo_root: Path) -> dict[str, str]:
     # Strip None values (unset vars in dotenv) and return only string values
     result: dict[str, str] = {k: v for k, v in raw.items() if v is not None}
     return result
+
+
+def build_default_sast_runner():
+    """Build a CompositeSastRunner from whichever tools are on PATH.
+
+    Called automatically when ``AnnealConfig.sast_runners is None`` (auto-detect).
+    Returns None if neither ruff nor semgrep is on PATH.
+
+    Returns:
+        A :class:`~anneal.sast.composite.CompositeSastRunner` containing all
+        available runners, or ``None`` if no SAST tools are found.
+    """
+    import shutil
+
+    from anneal.sast.composite import CompositeSastRunner
+    from anneal.sast.ruff_runner import RuffRunner
+    from anneal.sast.semgrep_runner import SemgrepRunner
+
+    runners: list = []
+    if shutil.which("ruff"):
+        runners.append(RuffRunner())
+        logger.debug("build_default_sast_runner: ruff found on PATH")
+    else:
+        logger.debug("build_default_sast_runner: ruff not on PATH, skipping")
+
+    if shutil.which("semgrep"):
+        runners.append(SemgrepRunner())
+        logger.debug("build_default_sast_runner: semgrep found on PATH")
+    else:
+        logger.debug("build_default_sast_runner: semgrep not on PATH, skipping")
+
+    if not runners:
+        logger.debug("build_default_sast_runner: no SAST tools found, SAST pre-pass disabled")
+        return None
+
+    return CompositeSastRunner(runners)
 
 
 def resolve_tier(

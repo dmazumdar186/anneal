@@ -318,3 +318,91 @@ def test_oscillation_helper_not_triggered_different_findings() -> None:
     fp2 = finding_fingerprint(f2)
     history = [frozenset([fp1]), frozenset([fp2])]
     assert oscillation_detected([f3], history) is False
+
+
+# ── SAST pre-pass integration test ────────────────────────────────────────────
+
+
+def test_sast_findings_passed_to_auditor(tmp_path: Path) -> None:
+    """When sast_runners contains a FakeSastRunner, the auditor receives a
+    non-empty sast_findings kwarg containing both fake findings."""
+    from pathlib import Path as _Path
+    from anneal.audit.base import AuditReport
+    from anneal.config import AnnealConfig
+    from anneal.fix.default_fixer import DefaultFixer
+    from anneal.llm.mock import DeterministicMockLLM
+    from anneal.sast.base import SastFinding, SastRunner
+    from anneal.loop_classic import anneal_classic
+
+    # ── Fake SAST runner returning 2 deterministic findings ──────────────────
+    class FakeSastRunner:
+        def run(self, worktree: _Path, changed_files: list[str]) -> list[SastFinding]:
+            return [
+                SastFinding(
+                    severity="high",
+                    file="hello.py",
+                    line=1,
+                    rule_id="FAKE001",
+                    message="fake finding one",
+                    tool="fake",
+                ),
+                SastFinding(
+                    severity="low",
+                    file="hello.py",
+                    line=2,
+                    rule_id="FAKE002",
+                    message="fake finding two",
+                    tool="fake",
+                ),
+            ]
+
+    # ── Mock auditor that captures kwargs and always returns PASS ─────────────
+    captured_kwargs: list[dict] = []
+
+    class CapturingAuditor:
+        def audit(self, diff: str, repo_root: _Path, *, sast_findings: str = "") -> AuditReport:
+            captured_kwargs.append({"sast_findings": sast_findings})
+            return AuditReport(
+                verdict="PASS",
+                findings=[],
+                silent_drops=[],
+                logic_disagreements=[],
+                summary="All clear.",
+                raw_markdown="**Verdict:** PASS\n### Issues Found\nNone detected\n"
+                             "### Silent Drops\nNone detected\n"
+                             "### Logic Disagreements\nNone detected\n"
+                             "### Summary\nAll clear.\n",
+                tokens_used=10,
+            )
+
+    repo = _init_repo(tmp_path)
+    fixer_llm = DeterministicMockLLM([])
+    fixer = DefaultFixer(fixer_llm)
+    log_dir = tmp_path / "log"
+
+    cfg = AnnealConfig(
+        repo=repo,
+        base_ref="HEAD",
+        max_rounds=2,
+        until_clean=2,
+        max_cost_usd=99.0,
+        dry_run=False,
+        no_worktree=False,
+        diff_path=None,
+        log_dir=log_dir,
+        auditor=CapturingAuditor(),
+        fixer=fixer,
+        model="claude-haiku-4-5-20251001",
+        sast_runners=[FakeSastRunner()],
+    )
+
+    result = anneal_classic(cfg)
+
+    assert result.converged is True
+    assert len(captured_kwargs) >= 1
+    first_call = captured_kwargs[0]
+    assert first_call["sast_findings"] != "", "auditor must receive non-empty sast_findings"
+    assert "FAKE001" in first_call["sast_findings"]
+    assert "FAKE002" in first_call["sast_findings"]
+    assert "fake finding one" in first_call["sast_findings"]
+    assert "fake finding two" in first_call["sast_findings"]
