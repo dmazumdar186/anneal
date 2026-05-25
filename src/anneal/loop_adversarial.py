@@ -9,6 +9,7 @@ from pathlib import Path
 
 from anneal.adversarial.base import Attack, AttackResult
 from anneal.config import AnnealConfig
+from anneal.loop_classic import _apply_determinism
 from anneal.cost import BudgetExceeded, CostTracker
 from anneal.diff.patch import apply_patch
 from anneal.diff.worktree import (
@@ -72,6 +73,10 @@ def anneal_adversarial(cfg: AnnealConfig) -> AnnealResult:
         log_dir = Path(cfg.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Deterministic replay (T4.14) ───────────────────────────────────────────
+    if cfg.deterministic:
+        _apply_determinism(cfg)
+
     # ── Set up worktree ────────────────────────────────────────────────────────
     if cfg.no_worktree:
         logger.warning(
@@ -101,7 +106,20 @@ def anneal_adversarial(cfg: AnnealConfig) -> AnnealResult:
             )
 
     # ── Core loop state ────────────────────────────────────────────────────────
-    transcript = TranscriptWriter(log_dir, mode="adversarial")
+    transcript = TranscriptWriter(
+        log_dir,
+        mode="adversarial",
+        deterministic=cfg.deterministic,
+        seed=cfg.seed,
+        models={
+            "red": cfg.red_model or cfg.model,
+            "blue": cfg.blue_model or cfg.model,
+            "judge": cfg.judge_model or cfg.model,
+        },
+        max_rounds=cfg.max_rounds,
+        until_clean=cfg.until_clean,
+        max_cost_usd=cfg.max_cost_usd,
+    )
     budget = CostTracker(cfg.max_cost_usd)
     red_empty_streak = 0
     open_attacks: list[Attack] = []          # landed attacks Blue must address next round

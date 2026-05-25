@@ -48,6 +48,9 @@ class DeterministicMockLLM:
         system: str,  # noqa: ARG002
         user: str,  # noqa: ARG002
         response_format: Literal["text", "json"] = "text",  # noqa: ARG002
+        *,
+        temperature: float | None = None,  # noqa: ARG002
+        seed: int | None = None,  # noqa: ARG002
     ) -> tuple[str, int]:
         """Return the next pre-configured response and token count.
 

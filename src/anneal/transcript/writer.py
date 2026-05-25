@@ -60,17 +60,37 @@ class TranscriptWriter:
     transcript/ is a sink — no other module reads from it during a loop.
     """
 
-    def __init__(self, log_dir: Path, mode: Literal["classic", "adversarial"]) -> None:
+    def __init__(
+        self,
+        log_dir: Path,
+        mode: Literal["classic", "adversarial"],
+        *,
+        deterministic: bool = False,
+        seed: int | None = None,
+        models: dict | None = None,
+        max_rounds: int | None = None,
+        until_clean: int | None = None,
+        max_cost_usd: float | None = None,
+    ) -> None:
         self._log_dir = log_dir
         self._mode = mode
         self._started_at = datetime.now(tz=timezone.utc).isoformat()
 
         log_dir.mkdir(parents=True, exist_ok=True)
+        # Run metadata block — written once at transcript start for replay traceability.
         manifest = {
             "mode": mode,
             "started_at": self._started_at,
             "finalized_at": None,
             "result": None,
+            "run_metadata": {
+                "deterministic": deterministic,
+                "seed": seed,
+                "models": models or {},
+                "max_rounds": max_rounds,
+                "until_clean": until_clean,
+                "max_cost_usd": max_cost_usd,
+            },
         }
         (log_dir / "manifest.json").write_text(_dumps(manifest), encoding="utf-8")
 

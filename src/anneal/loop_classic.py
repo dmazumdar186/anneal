@@ -27,6 +27,27 @@ from anneal.transcript.writer import TranscriptWriter
 logger = logging.getLogger(__name__)
 
 
+# ── Determinism helper ────────────────────────────────────────────────────────
+
+
+def _apply_determinism(cfg: AnnealConfig) -> None:
+    """Monkey-patch auditor/fixer LLMs to bind temperature=0.0 and cfg.seed.
+
+    Called at loop start when cfg.deterministic is True.  Sets ``_temperature``
+    and ``_seed`` instance attributes on each adapter so every subsequent
+    complete() call uses them as defaults (adapters read ``self._temperature``
+    when the caller passes temperature=None).
+    """
+    for agent in (cfg.auditor, cfg.fixer):
+        if agent is None:
+            continue
+        llm = getattr(agent, "llm", None) or getattr(agent, "_llm", None)
+        if llm is None:
+            continue
+        llm._temperature = 0.0
+        llm._seed = cfg.seed
+
+
 # ── Private helpers ────────────────────────────────────────────────────────────
 
 
@@ -194,6 +215,10 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
         log_dir = Path(cfg.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Deterministic replay (T4.14) ───────────────────────────────────────────
+    if cfg.deterministic:
+        _apply_determinism(cfg)
+
     # ── Set up worktree ────────────────────────────────────────────────────────
     if cfg.no_worktree:
         logger.warning(
@@ -219,7 +244,19 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
         raise exc
 
     # ── Core loop ──────────────────────────────────────────────────────────────
-    transcript = TranscriptWriter(log_dir, mode="classic")
+    transcript = TranscriptWriter(
+        log_dir,
+        mode="classic",
+        deterministic=cfg.deterministic,
+        seed=cfg.seed,
+        models={
+            "auditor": cfg.auditor_model or cfg.model,
+            "fixer": cfg.fixer_model or cfg.model,
+        },
+        max_rounds=cfg.max_rounds,
+        until_clean=cfg.until_clean,
+        max_cost_usd=cfg.max_cost_usd,
+    )
     budget = CostTracker(cfg.max_cost_usd)
     clean_streak = 0
     finding_history: list[frozenset[str]] = []  # one entry per round with findings

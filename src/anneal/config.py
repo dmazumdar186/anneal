@@ -88,6 +88,12 @@ class AnnealConfig:
     parallel_judge: bool = True
     judge_max_workers: int = 4
 
+    # Deterministic replay (T4.14)
+    # deterministic=True: forward temperature=0.0 and seed to every LLM call.
+    # seed=None with deterministic=True → auto-set to 42 in __post_init__.
+    deterministic: bool = False
+    seed: int | None = None
+
     def __post_init__(self) -> None:
         if self.audit_samples < 1:
             raise ValueError(f"audit_samples must be >= 1, got {self.audit_samples}")
@@ -104,6 +110,10 @@ class AnnealConfig:
                 f"audit_vote_threshold ({self.audit_vote_threshold}) cannot exceed "
                 f"audit_samples ({self.audit_samples})"
             )
+
+        # Deterministic replay: default seed to 42 when not explicitly set.
+        if self.deterministic and self.seed is None:
+            object.__setattr__(self, "seed", 42)
 
         # Auto-detect suppressions_path: if the caller left it as None, check
         # whether <repo>/.anneal/ already exists; if so, point at the standard

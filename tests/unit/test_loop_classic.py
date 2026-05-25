@@ -542,3 +542,84 @@ def test_repograph_context_passed_to_auditor(tmp_path: Path) -> None:
     assert "baz.py" in first_call["repograph_context"], (
         "repograph_context must contain caller file 'baz.py'"
     )
+
+
+# ── Deterministic replay (T4.14) ──────────────────────────────────────────────
+
+
+def test_deterministic_sets_temperature_and_seed(tmp_path: Path) -> None:
+    """AnnealConfig(deterministic=True, seed=42) must forward temperature=0.0
+    and seed=42 to the LLM adapter on every complete() call."""
+    from pathlib import Path as _Path
+    from anneal.audit.base import AuditReport
+    from anneal.config import AnnealConfig
+    from anneal.fix.default_fixer import DefaultFixer
+    from anneal.llm.mock import DeterministicMockLLM
+    from anneal.loop_classic import anneal_classic
+
+    # ── Capturing LLM: records all kwargs passed to complete() ──────────────
+    captured_calls: list[dict] = []
+
+    class CapturingLLM:
+        """Drop-in LLM that records temperature/seed kwargs and always returns PASS."""
+
+        # Satisfy _apply_determinism's attribute look-up
+        _temperature: float = 1.0
+        _seed: int | None = None
+
+        def complete(
+            self,
+            system: str,  # noqa: ARG002
+            user: str,  # noqa: ARG002
+            response_format: str = "text",  # noqa: ARG002
+            *,
+            temperature: float | None = None,
+            seed: int | None = None,
+        ) -> tuple[str, int]:
+            # _apply_determinism sets self._temperature; honour it when caller
+            # passes temperature=None (same contract as ClaudeLLM / OpenRouterLLM).
+            effective_temp = self._temperature if temperature is None else temperature
+            effective_seed = self._seed if seed is None else seed
+            captured_calls.append({"temperature": effective_temp, "seed": effective_seed})
+            return (
+                "**Verdict:** PASS\n### Issues Found\nNone detected\n"
+                "### Silent Drops\nNone detected\n"
+                "### Logic Disagreements\nNone detected\n"
+                "### Summary\nAll clear.\n",
+                100,
+            )
+
+    repo = _init_repo(tmp_path)
+    log_dir = tmp_path / "log"
+
+    capturing_llm = CapturingLLM()
+    from anneal.audit.pipeline_auditor import PipelineAuditor
+    auditor = PipelineAuditor(capturing_llm)
+    fixer = DefaultFixer(DeterministicMockLLM([]))
+
+    cfg = AnnealConfig(
+        repo=repo,
+        base_ref="HEAD",
+        max_rounds=2,
+        until_clean=2,
+        max_cost_usd=99.0,
+        dry_run=False,
+        no_worktree=False,
+        diff_path=None,
+        log_dir=log_dir,
+        auditor=auditor,
+        fixer=fixer,
+        model="claude-haiku-4-5-20251001",
+        sast_runners=[],
+        deterministic=True,
+        seed=42,
+    )
+
+    result = anneal_classic(cfg)
+
+    assert result.converged is True
+    assert len(captured_calls) >= 1, "auditor LLM must have been called at least once"
+    # Every call must carry temperature=0.0 and seed=42
+    for call in captured_calls:
+        assert call["temperature"] == 0.0, f"expected temperature=0.0, got {call['temperature']}"
+        assert call["seed"] == 42, f"expected seed=42, got {call['seed']}"

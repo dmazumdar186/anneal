@@ -57,6 +57,9 @@ class OpenRouterLLM:
         system: str,
         user: str,
         response_format: Literal["text", "json"] = "text",
+        *,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> tuple[str, int]:
         """Send prompt to OpenRouter and return (response_text, tokens_used).
 
@@ -65,6 +68,10 @@ class OpenRouterLLM:
             user: User message.
             response_format: "json" sets response_format={"type": "json_object"}
                 on the API call (OpenAI-compatible JSON mode).
+            temperature: Per-call temperature override. None falls back to
+                ``self._temperature`` (the constructor default).
+            seed: Optional integer seed forwarded to OR API. Supported by OpenAI
+                and Gemini backends; Anthropic-via-OR may ignore it silently.
 
         Returns:
             (response_text, total_tokens) where total_tokens = response.usage.total_tokens.
@@ -72,10 +79,11 @@ class OpenRouterLLM:
         Raises:
             LLMError: Wraps any openai.OpenAIError with the original as __cause__.
         """
+        effective_temperature = self._temperature if temperature is None else temperature
         kwargs: dict = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "temperature": self._temperature,
+            "temperature": effective_temperature,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -85,6 +93,8 @@ class OpenRouterLLM:
                 "X-Title": "anneal",
             },
         }
+        if seed is not None:
+            kwargs["seed"] = seed
         if response_format == "json":
             kwargs["response_format"] = {"type": "json_object"}
 

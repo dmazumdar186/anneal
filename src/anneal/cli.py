@@ -98,6 +98,19 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         help="Minimum samples a finding must appear in to survive (default 1). "
              "Must be >= 1 and <= --audit-samples. Typical: --audit-samples 3 --vote-threshold 2.",
     )
+    p.add_argument(
+        "--deterministic",
+        action="store_true",
+        default=False,
+        help="Enable deterministic replay: force temperature=0.0 and a fixed seed for all LLM calls.",
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Integer seed for deterministic replay (default 42 when --deterministic is set).",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -353,6 +366,8 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
         fixer_model=fixer_model,
         audit_samples=audit_samples,
         audit_vote_threshold=vote_threshold,
+        deterministic=args.deterministic,
+        seed=args.seed,
     )
 
     result = anneal_classic(cfg)
@@ -467,6 +482,8 @@ def _run_adversarial(args: argparse.Namespace) -> NoReturn:
         judge_model=judge_model,
         parallel_judge=parallel_judge,
         judge_max_workers=judge_max_workers,
+        deterministic=args.deterministic,
+        seed=args.seed,
     )
 
     result = anneal_adversarial(cfg)
