@@ -74,6 +74,12 @@ class AnnealConfig:
     audit_samples: int = 1
     audit_vote_threshold: int = 1
 
+    # Suppression DB (T3.12)
+    # None = auto-detect: set to <worktree>/.anneal/suppressions.json when
+    #        <worktree>/.anneal/ directory exists; else stay None (disabled).
+    # Set explicitly to opt-in/out regardless of directory presence.
+    suppressions_path: Path | None = None
+
     def __post_init__(self) -> None:
         if self.audit_samples < 1:
             raise ValueError(f"audit_samples must be >= 1, got {self.audit_samples}")
@@ -86,6 +92,20 @@ class AnnealConfig:
                 f"audit_vote_threshold ({self.audit_vote_threshold}) cannot exceed "
                 f"audit_samples ({self.audit_samples})"
             )
+
+        # Auto-detect suppressions_path: if the caller left it as None, check
+        # whether <repo>/.anneal/ already exists; if so, point at the standard
+        # suppressions.json inside it (the file itself need not exist yet).
+        if self.suppressions_path is None:
+            anneal_dir = Path(self.repo) / ".anneal"
+            if anneal_dir.is_dir():
+                # Use object.__setattr__ because the dataclass is not frozen,
+                # but we want to be explicit about this being a post-init mutation.
+                object.__setattr__(
+                    self,
+                    "suppressions_path",
+                    anneal_dir / "suppressions.json",
+                )
 
     # Model overrides (None = use default)
     model: str = "claude-haiku-4-5-20251001"

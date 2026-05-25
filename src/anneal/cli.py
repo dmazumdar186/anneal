@@ -190,6 +190,43 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     show.add_argument("log_dir", help="Path to the .anneal/<timestamp>/ log directory.")
 
+    # --- suppressions ---
+    sup = subparsers.add_parser(
+        "suppressions",
+        help="Manage the per-repo suppression database (.anneal/suppressions.json).",
+    )
+    sup_sub = sup.add_subparsers(dest="sup_action")
+
+    # list
+    sup_list = sup_sub.add_parser("list", help="List all suppressed findings.")
+    sup_list.add_argument(
+        "--repo",
+        default=None,
+        metavar="PATH",
+        help="Path to git repo (default: cwd).",
+    )
+
+    # add
+    sup_add = sup_sub.add_parser("add", help="Suppress a finding by fingerprint.")
+    sup_add.add_argument("fingerprint", help="16-hex-char fingerprint from anneal output.")
+    sup_add.add_argument("--reason", required=True, help="Human-readable reason for suppression.")
+    sup_add.add_argument(
+        "--repo",
+        default=None,
+        metavar="PATH",
+        help="Path to git repo (default: cwd).",
+    )
+
+    # remove
+    sup_remove = sup_sub.add_parser("remove", help="Remove a suppression entry.")
+    sup_remove.add_argument("fingerprint", help="16-hex-char fingerprint to remove.")
+    sup_remove.add_argument(
+        "--repo",
+        default=None,
+        metavar="PATH",
+        help="Path to git repo (default: cwd).",
+    )
+
     return parser
 
 
@@ -562,6 +599,53 @@ def _run_canary(args: argparse.Namespace) -> NoReturn:
     raise SystemExit(0 if report.overall_pass else 1)
 
 
+# ── Suppressions subcommand ────────────────────────────────────────────────────
+
+
+def _run_suppressions(args: argparse.Namespace) -> NoReturn:
+    """Manage the per-repo suppression database."""
+    from anneal.suppressions.store import SuppressionStore
+
+    repo = Path(args.repo) if getattr(args, "repo", None) else Path.cwd()
+    anneal_dir = repo / ".anneal"
+    store_path = anneal_dir / "suppressions.json"
+
+    action = getattr(args, "sup_action", None)
+
+    if action == "list":
+        if not store_path.exists():
+            print("no suppressions (store does not exist)")
+            raise SystemExit(0)
+        store = SuppressionStore(store_path)
+        entries = store.list_all()
+        if not entries:
+            print("no suppressions")
+        else:
+            for s in entries:
+                print(f"{s.fingerprint}  {s.created_at}  {s.reason!r}")
+        raise SystemExit(0)
+
+    elif action == "add":
+        anneal_dir.mkdir(parents=True, exist_ok=True)
+        store = SuppressionStore(store_path)
+        store.add(args.fingerprint, args.reason)
+        print(f"suppressed: {args.fingerprint}  reason={args.reason!r}")
+        raise SystemExit(0)
+
+    elif action == "remove":
+        if not store_path.exists():
+            print(f"anneal suppressions: store not found at {store_path}", file=sys.stderr)
+            raise SystemExit(1)
+        store = SuppressionStore(store_path)
+        store.remove(args.fingerprint)
+        print(f"removed: {args.fingerprint}")
+        raise SystemExit(0)
+
+    else:
+        print("anneal suppressions: specify an action — list | add | remove", file=sys.stderr)
+        raise SystemExit(1)
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 
@@ -585,6 +669,9 @@ def main() -> None:
 
     elif args.command == "canary":
         _run_canary(args)
+
+    elif args.command == "suppressions":
+        _run_suppressions(args)
 
     elif args.command == "replay-am":
         print(f"{args.command}: not yet implemented (Phase 5)", file=sys.stderr)

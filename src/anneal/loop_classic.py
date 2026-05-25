@@ -259,6 +259,12 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
     else:
         _repo_graph = cfg.repo_graph
 
+    # ── Lazy-load SuppressionStore (once, before the loop) ────────────────────
+    _store: SuppressionStore | None = None
+    if cfg.suppressions_path is not None:
+        _store = SuppressionStore(cfg.suppressions_path)
+        logger.info("anneal_classic: suppressions loaded from %s", cfg.suppressions_path)
+
     # ── Wrap auditor with VotingAuditor if multi-sample requested (T2.7) ──
     # Composes cleanly with SAST: sast_findings are forwarded to each sample.
     _auditor = cfg.auditor
@@ -341,6 +347,10 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
             except BudgetExceeded:
                 result = _build_result(False, r, "budget")
                 break
+
+            # ── Suppression filter (drop known-suppressed findings) ────────────
+            if _store is not None:
+                report = _apply_suppressions(report, _store)
 
             transcript.write_audit(r, report)
 
