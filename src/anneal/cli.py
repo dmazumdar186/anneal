@@ -81,6 +81,23 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Operate on repo in-place rather than in a git worktree (use with caution).",
     )
+    p.add_argument(
+        "--audit-samples",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of independent audit samples per round (default 1 = single call). "
+             "Values > 1 enable consensus voting. Cost scales roughly linearly with N "
+             "but cached system prompts reduce samples 2-N to ~0.1x input-token cost.",
+    )
+    p.add_argument(
+        "--vote-threshold",
+        type=int,
+        default=1,
+        metavar="K",
+        help="Minimum samples a finding must appear in to survive (default 1). "
+             "Must be >= 1 and <= --audit-samples. Typical: --audit-samples 3 --vote-threshold 2.",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -252,6 +269,22 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
     if getattr(args, "diff_file", None):
         diff_path = Path(args.diff_file)
 
+    # Validate voting args before constructing config so errors surface early
+    audit_samples = args.audit_samples
+    vote_threshold = args.vote_threshold
+    if audit_samples < 1:
+        print(
+            f"anneal: --audit-samples must be >= 1, got {audit_samples}", file=sys.stderr
+        )
+        raise SystemExit(1)
+    if vote_threshold < 1 or vote_threshold > audit_samples:
+        print(
+            f"anneal: --vote-threshold must be >= 1 and <= --audit-samples ({audit_samples}), "
+            f"got {vote_threshold}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     cfg = AnnealConfig(
         repo=repo,
         base_ref=ref,
@@ -267,6 +300,8 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
         model=auditor_model,
         auditor_model=auditor_model,
         fixer_model=fixer_model,
+        audit_samples=audit_samples,
+        audit_vote_threshold=vote_threshold,
     )
 
     result = anneal_classic(cfg)

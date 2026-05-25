@@ -62,6 +62,25 @@ class AnnealConfig:
     # [...]  = explicit list of runners to use
     sast_runners: "list[SastRunner] | None" = None
 
+    # Multi-sample voting (T2.7)
+    # audit_samples=1 → single call, current behavior, zero overhead (default)
+    # audit_samples=N, audit_vote_threshold=K → run N samples, keep findings in ≥K
+    audit_samples: int = 1
+    audit_vote_threshold: int = 1
+
+    def __post_init__(self) -> None:
+        if self.audit_samples < 1:
+            raise ValueError(f"audit_samples must be >= 1, got {self.audit_samples}")
+        if self.audit_vote_threshold < 1:
+            raise ValueError(
+                f"audit_vote_threshold must be >= 1, got {self.audit_vote_threshold}"
+            )
+        if self.audit_vote_threshold > self.audit_samples:
+            raise ValueError(
+                f"audit_vote_threshold ({self.audit_vote_threshold}) cannot exceed "
+                f"audit_samples ({self.audit_samples})"
+            )
+
     # Model overrides (None = use default)
     model: str = "claude-haiku-4-5-20251001"
     auditor_model: str | None = None

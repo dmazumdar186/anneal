@@ -210,6 +210,22 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
         from anneal.sast.composite import CompositeSastRunner  # noqa: PLC0415
         _sast_runner = CompositeSastRunner(cfg.sast_runners)
 
+    # ── Wrap auditor with VotingAuditor if multi-sample requested (T2.7) ──
+    # Composes cleanly with SAST: sast_findings are forwarded to each sample.
+    _auditor = cfg.auditor
+    if cfg.audit_samples > 1:
+        from anneal.audit.voting import VotingAuditor  # noqa: PLC0415
+        _auditor = VotingAuditor(
+            cfg.auditor,
+            samples=cfg.audit_samples,
+            vote_threshold=cfg.audit_vote_threshold,
+        )
+        logger.info(
+            "anneal_classic: multi-sample voting enabled — samples=%d threshold=%d",
+            cfg.audit_samples,
+            cfg.audit_vote_threshold,
+        )
+
     try:
         for r in range(1, cfg.max_rounds + 1):
             # Budget gate at the TOP of every round (plan says "wrap each LLM
@@ -240,9 +256,9 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             try:
                 if sast_md:
-                    report = cfg.auditor.audit(current_diff, worktree, sast_findings=sast_md)
+                    report = _auditor.audit(current_diff, worktree, sast_findings=sast_md)
                 else:
-                    report = cfg.auditor.audit(current_diff, worktree)
+                    report = _auditor.audit(current_diff, worktree)
             except BudgetExceeded:
                 result = _build_result(False, r, "budget")
                 break
