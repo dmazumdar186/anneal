@@ -78,6 +78,7 @@ class Auditor(Protocol):
         *,
         sast_findings: str = "",
         repograph_context: str = "",
+        semantic_summary: str = "",
     ) -> AuditReport:
         """Audit a diff and return a structured AuditReport.
 
@@ -91,5 +92,9 @@ class Auditor(Protocol):
                                string.  When non-empty, contains the callers of
                                every modified symbol so the auditor can detect
                                cross-file breakage.
+            semantic_summary:  Optional AST-derived semantic diff summary as a
+                               markdown string.  When non-empty, the auditor can
+                               use it to skip cosmetic hunks and focus on
+                               structural changes (added/removed/renamed symbols).
         """
         ...

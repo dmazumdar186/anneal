@@ -67,6 +67,7 @@ class VotingAuditor:
         *,
         sast_findings: str = "",
         repograph_context: str = "",
+        semantic_summary: str = "",
     ) -> AuditReport:
         """Run base_auditor N times and return a consensus-merged AuditReport.
 
@@ -84,6 +85,8 @@ class VotingAuditor:
             repo_root:         Path to the repository root.
             sast_findings:     Optional pre-pass SAST output forwarded to each sample.
             repograph_context: Optional repo-graph caller context forwarded to each sample.
+            semantic_summary:  Optional AST-derived semantic diff summary forwarded
+                               to each sample.
 
         Returns:
             A single merged AuditReport.
@@ -95,6 +98,7 @@ class VotingAuditor:
                 repo_root,
                 sast_findings=sast_findings,
                 repograph_context=repograph_context,
+                semantic_summary=semantic_summary,
             )
             reports.append(report)
             logger.debug(

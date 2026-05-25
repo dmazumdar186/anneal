@@ -268,6 +268,7 @@ class PipelineAuditor:
         *,
         sast_findings: str = "",
         repograph_context: str = "",
+        semantic_summary: str = "",
     ) -> AuditReport:
         """Run the pipeline-auditor prompt against diff and parse findings.
 
@@ -283,6 +284,11 @@ class PipelineAuditor:
                                string.  When non-empty, a "## Repo-graph context"
                                section is injected between SAST findings and the
                                diff so the auditor can reason about cross-file impact.
+            semantic_summary:  Optional AST-derived semantic diff summary as a
+                               markdown string.  When non-empty, injected between
+                               the repo-graph context and the diff so the auditor
+                               can skip cosmetic hunks and prioritise structural
+                               changes.
 
         Returns:
             Parsed AuditReport.
@@ -303,9 +309,17 @@ class PipelineAuditor:
                 "---\n\n"
             )
 
+        semantic_block = ""
+        if semantic_summary:
+            semantic_block = (
+                f"{semantic_summary}\n\n"
+                "---\n\n"
+            )
+
         user_msg = (
             f"{sast_block}"
             f"{repograph_block}"
+            f"{semantic_block}"
             "Below is the diff to audit. Review it carefully according to your instructions.\n\n"
             "```diff\n"
             f"{diff}\n"

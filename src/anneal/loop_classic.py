@@ -6,8 +6,10 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from anneal.audit.base import finding_fingerprint
+from anneal.audit.base import AuditReport, finding_fingerprint
 from anneal.config import AnnealConfig, build_default_sast_runner, build_default_repo_graph
+from anneal.diff.semantic import summarize_diff
+from anneal.suppressions.store import SuppressionStore
 from anneal.cost import BudgetExceeded, CostTracker
 from anneal.sast.base import format_findings_as_markdown
 from anneal.diff.patch import ApplyResult, apply_patch
@@ -26,6 +28,47 @@ logger = logging.getLogger(__name__)
 
 
 # ── Private helpers ────────────────────────────────────────────────────────────
+
+
+def _apply_suppressions(report: AuditReport, store: "SuppressionStore") -> AuditReport:
+    """Filter suppressed findings from report; fix up verdict if needed.
+
+    Args:
+        report: The raw AuditReport from the auditor.
+        store:  A loaded SuppressionStore.  is_suppressed() is called for each
+                finding — this also refreshes last_seen_at in the store.
+
+    Returns:
+        A new AuditReport with suppressed findings removed.  If all findings
+        are suppressed and the original verdict was FAIL or WARNINGS, the
+        verdict is bumped down to PASS so the loop doesn't try to fix
+        non-existent issues.
+    """
+    if not report.findings:
+        return report
+
+    kept = [f for f in report.findings if not store.is_suppressed(finding_fingerprint(f))]
+    dropped = len(report.findings) - len(kept)
+    if dropped:
+        logger.info("suppressions: dropped %d finding(s)", dropped)
+
+    if kept == report.findings:
+        return report  # nothing changed — return as-is
+
+    # Fix up verdict: if no findings remain, a FAIL/WARNINGS verdict is stale.
+    verdict = report.verdict
+    if not kept and verdict in ("FAIL", "WARNINGS"):
+        verdict = "PASS"
+
+    return AuditReport(
+        verdict=verdict,
+        findings=kept,
+        silent_drops=report.silent_drops,
+        logic_disagreements=report.logic_disagreements,
+        summary=report.summary,
+        raw_markdown=report.raw_markdown,
+        tokens_used=report.tokens_used,
+    )
 
 
 def _apply_initial_diff(worktree: Path, diff_path: Path | None) -> None:
@@ -279,13 +322,19 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
                     r, len(_rg_symbols), len(_rg_callers),
                 )
 
+            # ── Semantic diff summary (pure Python, always-on) ─────────────────
+            semantic_md = summarize_diff(current_diff, worktree)
+            if semantic_md:
+                logger.info("Round %d: semantic: %d line(s)", r, len(semantic_md.splitlines()))
+
             try:
-                if sast_md or repograph_md:
+                if sast_md or repograph_md or semantic_md:
                     report = _auditor.audit(
                         current_diff,
                         worktree,
                         sast_findings=sast_md,
                         repograph_context=repograph_md,
+                        semantic_summary=semantic_md,
                     )
                 else:
                     report = _auditor.audit(current_diff, worktree)
