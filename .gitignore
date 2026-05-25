@@ -9,3 +9,6 @@ build/
 .coverage
 *.pyc
 worktrees/
+
+# Canary run intermediates (T1.1 + meta-audit; timestamped per run)
+.canary/
