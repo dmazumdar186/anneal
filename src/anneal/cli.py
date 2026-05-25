@@ -163,6 +163,24 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Maximum number of concurrent Judge threads (default 4, must be >= 1).",
     )
+    adversarial.add_argument(
+        "--judge-samples",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of independent Judge calls per finding for meta-verification voting "
+             "(default 1 = single call, current behavior). Values > 1 enable VotingJudge. "
+             "Cost scales roughly linearly with N but cached system prompts reduce "
+             "samples 2-N to ~0.1x input-token cost.",
+    )
+    adversarial.add_argument(
+        "--judge-vote-threshold",
+        type=int,
+        default=1,
+        metavar="K",
+        help="Minimum 'valid' Judge votes required to confirm a finding (default 1). "
+             "Must be >= 1 and <= --judge-samples. Typical: --judge-samples 3 --judge-vote-threshold 2.",
+    )
     _add_common_args(adversarial)
 
     # --- canary ---
@@ -393,6 +411,7 @@ def _run_adversarial(args: argparse.Namespace) -> NoReturn:
     from anneal.adversarial.red import Red
     from anneal.adversarial.blue import Blue
     from anneal.adversarial.judge import Judge
+    from anneal.adversarial.voting_judge import VotingJudge
     from anneal.llm.factory import build_llm
     from anneal.loop_adversarial import anneal_adversarial
 
@@ -462,6 +481,26 @@ def _run_adversarial(args: argparse.Namespace) -> NoReturn:
             file=sys.stderr,
         )
         raise SystemExit(1)
+
+    judge_samples = getattr(args, "judge_samples", 1)
+    judge_vote_threshold = getattr(args, "judge_vote_threshold", 1)
+    if judge_samples < 1:
+        print(
+            f"anneal: --judge-samples must be >= 1, got {judge_samples}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if judge_vote_threshold < 1 or judge_vote_threshold > judge_samples:
+        print(
+            f"anneal: --judge-vote-threshold must be >= 1 and <= --judge-samples "
+            f"({judge_samples}), got {judge_vote_threshold}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    if judge_samples > 1:
+        judge = VotingJudge(judge, samples=judge_samples, vote_threshold=judge_vote_threshold)  # type: ignore[assignment]
+        print(f"  judge  voting: samples={judge_samples}  vote_threshold={judge_vote_threshold}")
 
     cfg = AnnealConfig(
         repo=repo,
