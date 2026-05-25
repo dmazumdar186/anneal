@@ -60,6 +60,8 @@ def apply_patch(worktree: Path, patch: Patch) -> ApplyResult:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         stderr = result.stderr
 

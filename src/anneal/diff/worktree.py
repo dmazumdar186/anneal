@@ -29,6 +29,8 @@ def _run(args: list[str], cwd: Path | None = None) -> str:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return result.stdout
     except subprocess.CalledProcessError as exc:
