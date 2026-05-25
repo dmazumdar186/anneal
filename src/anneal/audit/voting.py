@@ -61,7 +61,12 @@ class VotingAuditor:
         self.vote_threshold = vote_threshold
 
     def audit(
-        self, diff: str, repo_root: Path, *, sast_findings: str = ""
+        self,
+        diff: str,
+        repo_root: Path,
+        *,
+        sast_findings: str = "",
+        repograph_context: str = "",
     ) -> AuditReport:
         """Run base_auditor N times and return a consensus-merged AuditReport.
 
@@ -75,16 +80,22 @@ class VotingAuditor:
           6. tokens_used = sum across all samples.
 
         Args:
-            diff:         Unified diff string to audit.
-            repo_root:    Path to the repository root.
-            sast_findings: Optional pre-pass SAST output forwarded to each sample.
+            diff:              Unified diff string to audit.
+            repo_root:         Path to the repository root.
+            sast_findings:     Optional pre-pass SAST output forwarded to each sample.
+            repograph_context: Optional repo-graph caller context forwarded to each sample.
 
         Returns:
             A single merged AuditReport.
         """
         reports: list[AuditReport] = []
         for i in range(self.samples):
-            report = self._base.audit(diff, repo_root, sast_findings=sast_findings)
+            report = self._base.audit(
+                diff,
+                repo_root,
+                sast_findings=sast_findings,
+                repograph_context=repograph_context,
+            )
             reports.append(report)
             logger.debug(
                 "VotingAuditor sample %d/%d: verdict=%s findings=%d",

@@ -360,7 +360,14 @@ def test_sast_findings_passed_to_auditor(tmp_path: Path) -> None:
     captured_kwargs: list[dict] = []
 
     class CapturingAuditor:
-        def audit(self, diff: str, repo_root: _Path, *, sast_findings: str = "") -> AuditReport:
+        def audit(  # noqa: ARG002
+            self,
+            diff: str,
+            repo_root: _Path,
+            *,
+            sast_findings: str = "",
+            repograph_context: str = "",
+        ) -> AuditReport:
             captured_kwargs.append({"sast_findings": sast_findings})
             return AuditReport(
                 verdict="PASS",
@@ -406,3 +413,130 @@ def test_sast_findings_passed_to_auditor(tmp_path: Path) -> None:
     assert "FAKE002" in first_call["sast_findings"]
     assert "fake finding one" in first_call["sast_findings"]
     assert "fake finding two" in first_call["sast_findings"]
+
+
+# ── Repo-graph context integration test ───────────────────────────────────────
+
+
+def test_repograph_context_passed_to_auditor(tmp_path: Path) -> None:
+    """When repo_graph contains a FakeRepoGraph, the auditor receives a non-empty
+    repograph_context kwarg that contains the symbol name and both caller files."""
+    from pathlib import Path as _Path
+    from anneal.audit.base import AuditReport
+    from anneal.config import AnnealConfig
+    from anneal.fix.default_fixer import DefaultFixer
+    from anneal.llm.mock import DeterministicMockLLM
+    from anneal.repograph.base import Callsite, Symbol
+    from anneal.loop_classic import anneal_classic
+
+    # ── FakeRepoGraph test double ────────────────────────────────────────────
+    class FakeRepoGraph:
+        def extract_symbols(self, file_path: str) -> list[Symbol]:
+            return [
+                Symbol(
+                    name="foo",
+                    kind="function",
+                    file=file_path,
+                    line=1,
+                    qualified_name="foo",
+                )
+            ]
+
+        def find_callers(self, symbol_name: str, search_root: _Path) -> list[Callsite]:  # noqa: ARG002
+            return [
+                Callsite(
+                    caller_file="bar.py",
+                    caller_line=10,
+                    caller_function="run",
+                    called_symbol=symbol_name,
+                ),
+                Callsite(
+                    caller_file="baz.py",
+                    caller_line=20,
+                    caller_function=None,
+                    called_symbol=symbol_name,
+                ),
+            ]
+
+    # ── Mock auditor that captures kwargs and always returns PASS ─────────────
+    captured_kwargs: list[dict] = []
+
+    class CapturingAuditor:
+        def audit(  # noqa: ARG002
+            self,
+            diff: str,
+            repo_root: _Path,
+            *,
+            sast_findings: str = "",
+            repograph_context: str = "",
+        ) -> AuditReport:
+            captured_kwargs.append({"repograph_context": repograph_context})
+            return AuditReport(
+                verdict="PASS",
+                findings=[],
+                silent_drops=[],
+                logic_disagreements=[],
+                summary="All clear.",
+                raw_markdown=(
+                    "**Verdict:** PASS\n### Issues Found\nNone detected\n"
+                    "### Silent Drops\nNone detected\n"
+                    "### Logic Disagreements\nNone detected\n"
+                    "### Summary\nAll clear.\n"
+                ),
+                tokens_used=10,
+            )
+
+    # ── Build a repo with a real diff so repograph can extract symbols ────────
+    # _init_repo creates one commit with hello.py.  We write a diff that adds a
+    # line to hello.py; diff_path causes loop_classic to apply it before the
+    # first git_diff call, giving us a non-empty diff referencing hello.py.
+    repo = _init_repo(tmp_path)
+
+    diff_file = tmp_path / "initial.diff"
+    diff_file.write_text(
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1,1 +1,2 @@\n"
+        ' print("hello")\n'
+        '+# repograph test\n',
+        encoding="utf-8",
+    )
+
+    fixer_llm = DeterministicMockLLM([])
+    fixer = DefaultFixer(fixer_llm)
+    log_dir = tmp_path / "log"
+
+    cfg = AnnealConfig(
+        repo=repo,
+        base_ref="HEAD",
+        max_rounds=2,
+        until_clean=2,
+        max_cost_usd=99.0,
+        dry_run=False,
+        no_worktree=False,
+        diff_path=diff_file,
+        log_dir=log_dir,
+        auditor=CapturingAuditor(),
+        fixer=fixer,
+        model="claude-haiku-4-5-20251001",
+        sast_runners=[],          # explicitly disabled — no SAST pre-pass
+        repo_graph=FakeRepoGraph(),
+    )
+
+    result = anneal_classic(cfg)
+
+    assert result.converged is True
+    assert len(captured_kwargs) >= 1
+    first_call = captured_kwargs[0]
+    assert first_call["repograph_context"] != "", (
+        "auditor must receive non-empty repograph_context"
+    )
+    assert "foo" in first_call["repograph_context"], (
+        "repograph_context must contain the symbol name 'foo'"
+    )
+    assert "bar.py" in first_call["repograph_context"], (
+        "repograph_context must contain caller file 'bar.py'"
+    )
+    assert "baz.py" in first_call["repograph_context"], (
+        "repograph_context must contain caller file 'baz.py'"
+    )

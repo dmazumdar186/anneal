@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from anneal.audit.base import finding_fingerprint
-from anneal.config import AnnealConfig, build_default_sast_runner
+from anneal.config import AnnealConfig, build_default_sast_runner, build_default_repo_graph
 from anneal.cost import BudgetExceeded, CostTracker
 from anneal.sast.base import format_findings_as_markdown
 from anneal.diff.patch import ApplyResult, apply_patch
@@ -210,6 +210,12 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
         from anneal.sast.composite import CompositeSastRunner  # noqa: PLC0415
         _sast_runner = CompositeSastRunner(cfg.sast_runners)
 
+    # ── Resolve repo-graph (auto-detect once, before the loop) ────────────────
+    if cfg.repo_graph is None:
+        _repo_graph = build_default_repo_graph(worktree)
+    else:
+        _repo_graph = cfg.repo_graph
+
     # ── Wrap auditor with VotingAuditor if multi-sample requested (T2.7) ──
     # Composes cleanly with SAST: sast_findings are forwarded to each sample.
     _auditor = cfg.auditor
@@ -254,9 +260,33 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             logger.info("Round %d: sast: %d finding(s)", r, len(sast_findings_list))
 
+            # ── Repo-graph context ─────────────────────────────────────────────
+            repograph_md = ""
+            if _repo_graph is not None:
+                from anneal.repograph.diff_extractor import build_context_for_diff  # noqa: PLC0415
+                repograph_md = build_context_for_diff(current_diff, worktree, _repo_graph)
+                # Count symbols and callers for the transcript log line
+                _rg_symbols = [
+                    line for line in repograph_md.splitlines()
+                    if line.startswith("### `")
+                ]
+                _rg_callers = [
+                    line for line in repograph_md.splitlines()
+                    if line.startswith("- `") and "calls `" in line
+                ]
+                logger.info(
+                    "Round %d: repograph: %d symbol(s), %d caller(s)",
+                    r, len(_rg_symbols), len(_rg_callers),
+                )
+
             try:
-                if sast_md:
-                    report = _auditor.audit(current_diff, worktree, sast_findings=sast_md)
+                if sast_md or repograph_md:
+                    report = _auditor.audit(
+                        current_diff,
+                        worktree,
+                        sast_findings=sast_md,
+                        repograph_context=repograph_md,
+                    )
                 else:
                     report = _auditor.audit(current_diff, worktree)
             except BudgetExceeded:

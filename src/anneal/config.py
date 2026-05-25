@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from anneal.adversarial.blue import BlueAgent
     from anneal.adversarial.judge import Judge
     from anneal.sast.base import SastRunner
+    from anneal.repograph.base import RepoGraph
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,11 @@ class AnnealConfig:
     # []    = explicitly disabled (no SAST pre-pass)
     # [...]  = explicit list of runners to use
     sast_runners: "list[SastRunner] | None" = None
+
+    # Repo-graph context injection (T2.8b)
+    # None  = auto-detect (use PythonRepoGraph if any .py files exist in the worktree)
+    # A RepoGraph instance = use it directly
+    repo_graph: "RepoGraph | None" = None
 
     # Multi-sample voting (T2.7)
     # audit_samples=1 → single call, current behavior, zero overhead (default)
@@ -185,6 +191,38 @@ def build_default_sast_runner():
         return None
 
     return CompositeSastRunner(runners)
+
+
+def build_default_repo_graph(worktree: Path):
+    """Return a PythonRepoGraph if the worktree contains any .py files, else None.
+
+    Excludes ``.venv/`` and ``.git/`` directories from the search so the
+    auto-detect does not trigger on vendored or VCS-internal Python files.
+
+    Called automatically when ``AnnealConfig.repo_graph is None`` (auto-detect).
+
+    Args:
+        worktree: Absolute path to the worktree root.
+
+    Returns:
+        A :class:`~anneal.repograph.python_graph.PythonRepoGraph` instance, or
+        ``None`` if no ``.py`` files are found outside excluded directories.
+    """
+    from anneal.repograph.python_graph import PythonRepoGraph  # noqa: PLC0415
+
+    excluded = {".venv", ".git"}
+    for py_file in worktree.rglob("*.py"):
+        # Check that none of the path parts (relative to worktree) are excluded
+        try:
+            rel_parts = py_file.relative_to(worktree).parts
+        except ValueError:
+            continue
+        if not any(part in excluded for part in rel_parts):
+            logger.debug("build_default_repo_graph: .py files found, enabling PythonRepoGraph")
+            return PythonRepoGraph()
+
+    logger.debug("build_default_repo_graph: no .py files found outside excluded dirs, skipping")
+    return None
 
 
 def resolve_tier(

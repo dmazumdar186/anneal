@@ -261,17 +261,28 @@ class PipelineAuditor:
         self._llm = llm
         self._prompt = _load_prompt(prompt_path or _DEFAULT_PROMPT_PATH)
 
-    def audit(self, diff: str, repo_root: Path, *, sast_findings: str = "") -> AuditReport:  # noqa: ARG002  # Protocol requires it
+    def audit(
+        self,
+        diff: str,
+        repo_root: Path,  # noqa: ARG002  # Protocol requires it; unused by base impl
+        *,
+        sast_findings: str = "",
+        repograph_context: str = "",
+    ) -> AuditReport:
         """Run the pipeline-auditor prompt against diff and parse findings.
 
         Args:
-            diff:          Unified diff string to audit.
-            repo_root:     Path to the repository root (available for context; not
-                           used by the base auditor but part of the Auditor Protocol).
-            sast_findings: Optional pre-pass SAST output as a markdown string.
-                           When non-empty, a "## Pre-pass findings" section is
-                           prepended to the user message so the LLM can focus
-                           on issues the deterministic pass did not already catch.
+            diff:              Unified diff string to audit.
+            repo_root:         Path to the repository root (available for context;
+                               not used by the base auditor but part of the Protocol).
+            sast_findings:     Optional pre-pass SAST output as a markdown string.
+                               When non-empty, a "## Pre-pass findings" section is
+                               prepended to the user message so the LLM can focus
+                               on issues the deterministic pass did not already catch.
+            repograph_context: Optional repo-graph caller context as a markdown
+                               string.  When non-empty, a "## Repo-graph context"
+                               section is injected between SAST findings and the
+                               diff so the auditor can reason about cross-file impact.
 
         Returns:
             Parsed AuditReport.
@@ -284,8 +295,17 @@ class PipelineAuditor:
                 "---\n\n"
             )
 
+        repograph_block = ""
+        if repograph_context:
+            repograph_block = (
+                "## Repo-graph context — callers of modified symbols\n\n"
+                f"{repograph_context}\n\n"
+                "---\n\n"
+            )
+
         user_msg = (
             f"{sast_block}"
+            f"{repograph_block}"
             "Below is the diff to audit. Review it carefully according to your instructions.\n\n"
             "```diff\n"
             f"{diff}\n"
