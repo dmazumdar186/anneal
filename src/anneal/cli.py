@@ -48,9 +48,9 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--fixer", default="default", help="Fixer name or path.")
     p.add_argument(
         "--tier",
-        choices=["cheap", "balanced", "premium"],
+        choices=["cheap", "balanced", "premium", "ultra"],
         default="balanced",
-        help="Model preset bundle: cheap (Gemini Flash/all), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge). Default: balanced.",
+        help="Model preset bundle: cheap (Gemini Flash/all), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge), ultra (Opus 4.7/substantive + Sonnet/judge). Default: balanced.",
     )
     p.add_argument(
         "--provider",
@@ -130,7 +130,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     canary.add_argument(
         "--tier",
-        choices=["cheap", "balanced", "premium"],
+        choices=["cheap", "balanced", "premium", "ultra"],
         default="balanced",
     )
     canary.add_argument(

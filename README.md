@@ -37,4 +37,15 @@ anneal replay-am --commit cc4fca1 --repo /path/to/antigravity
 anneal canary --subset all
 ```
 
+## Tiers
+
+| Tier | Auditor / Fixer / Red / Blue | Judge | Provider |
+|------|------------------------------|-------|----------|
+| `cheap` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | OpenRouter (all) |
+| `balanced` (default) | `claude-haiku-4-5-20251001` | `google/gemini-2.5-flash` | Anthropic + OpenRouter |
+| `premium` | `claude-sonnet-4-6` | `claude-haiku-4-5-20251001` | Anthropic (all) |
+| `ultra` | `claude-opus-4-7` | `claude-sonnet-4-6` | Anthropic (all) |
+
+Use `--tier ultra` for high-stakes diffs (security, payments, migrations) where maximum reasoning depth matters.
+
 ## Status: v0.0.1 — under active development

@@ -126,7 +126,7 @@ def load_env(repo_root: Path) -> dict[str, str]:
 
 
 def resolve_tier(
-    tier: Literal["cheap", "balanced", "premium"],
+    tier: Literal["cheap", "balanced", "premium", "ultra"],
 ) -> dict[str, dict[str, str]]:
     """Resolve a tier preset to per-role (provider, model) tuples.
 
@@ -137,6 +137,7 @@ def resolve_tier(
       cheap     -> gemini-2.5-flash for all roles, openrouter
       balanced  -> haiku 4.5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
       premium   -> sonnet 4.6 for audit/fix/red/blue (anthropic), haiku 4.5 for judge (anthropic)
+      ultra     -> opus 4.7 for audit/fix/red/blue (anthropic), sonnet 4.6 for judge (anthropic)
 
     Example::
 
@@ -167,8 +168,17 @@ def resolve_tier(
             "judge":   {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
         }
 
+        >>> resolve_tier("ultra")
+        {
+            "auditor": {"provider": "anthropic", "model": "claude-opus-4-7"},
+            "fixer":   {"provider": "anthropic", "model": "claude-opus-4-7"},
+            "red":     {"provider": "anthropic", "model": "claude-opus-4-7"},
+            "blue":    {"provider": "anthropic", "model": "claude-opus-4-7"},
+            "judge":   {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+        }
+
     Args:
-        tier: One of "cheap", "balanced", "premium".
+        tier: One of "cheap", "balanced", "premium", "ultra".
 
     Returns:
         Dict mapping role → {"provider": ..., "model": ...}.
@@ -179,6 +189,7 @@ def resolve_tier(
     _GEMINI_FLASH = {"provider": "openrouter", "model": "google/gemini-2.5-flash"}
     _HAIKU = {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"}
     _SONNET = {"provider": "anthropic", "model": "claude-sonnet-4-6"}
+    _OPUS_4_7 = {"provider": "anthropic", "model": "claude-opus-4-7"}
 
     if tier == "cheap":
         return {
@@ -204,7 +215,15 @@ def resolve_tier(
             "blue":    _SONNET,
             "judge":   _HAIKU,
         }
+    elif tier == "ultra":
+        return {
+            "auditor": _OPUS_4_7,
+            "fixer":   _OPUS_4_7,
+            "red":     _OPUS_4_7,
+            "blue":    _OPUS_4_7,
+            "judge":   _SONNET,
+        }
     else:
         raise ValueError(
-            f"Unknown tier {tier!r}. Valid values are: 'cheap', 'balanced', 'premium'."
+            f"Unknown tier {tier!r}. Valid values are: 'cheap', 'balanced', 'premium', 'ultra'."
         )

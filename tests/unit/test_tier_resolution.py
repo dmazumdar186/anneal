@@ -42,6 +42,23 @@ def test_resolve_tier_premium() -> None:
     assert result["judge"]["model"] == "claude-haiku-4-5-20251001"
 
 
+def test_resolve_tier_ultra_substantive_roles() -> None:
+    """ultra tier: auditor/fixer/red/blue → opus 4.7 anthropic."""
+    result = resolve_tier("ultra")
+    assert set(result.keys()) == {"auditor", "fixer", "red", "blue", "judge"}
+
+    for role in ("auditor", "fixer", "red", "blue"):
+        assert result[role]["provider"] == "anthropic", f"{role} provider should be anthropic"
+        assert result[role]["model"] == "claude-opus-4-7", f"{role} model mismatch"
+
+
+def test_resolve_tier_ultra_judge() -> None:
+    """ultra tier: judge → sonnet 4.6 anthropic (Opus is overkill for arbitration)."""
+    result = resolve_tier("ultra")
+    assert result["judge"]["provider"] == "anthropic"
+    assert result["judge"]["model"] == "claude-sonnet-4-6"
+
+
 def test_resolve_tier_invalid_raises() -> None:
     """Passing an unknown tier string raises ValueError."""
     with pytest.raises(ValueError, match="Unknown tier"):

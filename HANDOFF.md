@@ -39,6 +39,9 @@ All 73 unit tests use `DeterministicMockLLM` — **zero real API calls so far.**
 | cheap | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | OpenRouter for all |
 | balanced (current default) | `claude-haiku-4-5-20251001` | `google/gemini-2.5-flash` | Anthropic direct + OpenRouter |
 | premium | `claude-sonnet-4-6` | `claude-haiku-4-5-20251001` | Anthropic direct |
+| ultra | `claude-opus-4-7` | `claude-sonnet-4-6` | Anthropic direct |
+
+**T1.3 (2026-05-25):** Added `ultra` tier — Opus 4.7 for audit/fix/red/blue roles, Sonnet 4.6 for judge. Use for security/payments/migration diffs where maximum reasoning depth matters. Pricing: $15/$1.50/$18.75/$75 per 1M (input/cache_read/cache_write/output).
 
 Default `--max-cost-usd`: $1.00 (canary suite uses $10).
 
