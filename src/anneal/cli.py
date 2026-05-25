@@ -111,6 +111,14 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         metavar="N",
         help="Integer seed for deterministic replay (default 42 when --deterministic is set).",
     )
+    p.add_argument(
+        "--interactive",
+        action="store_true",
+        default=False,
+        help="Pause at oscillation, budget, and patch-conflict failure modes and prompt for "
+             "a human decision (abort / raise budget / dismiss finding / add hint). "
+             "Default OFF — automated/CI runs are unaffected.",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -367,6 +375,12 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
         )
         raise SystemExit(1)
 
+    interactive = getattr(args, "interactive", False)
+    intervention_prompter = None
+    if interactive:
+        from anneal.intervention.pause import InterventionPrompter
+        intervention_prompter = InterventionPrompter()
+
     cfg = AnnealConfig(
         repo=repo,
         base_ref=ref,
@@ -386,6 +400,8 @@ def _run_classic(args: argparse.Namespace) -> NoReturn:
         audit_vote_threshold=vote_threshold,
         deterministic=args.deterministic,
         seed=args.seed,
+        interactive=interactive,
+        intervention_prompter=intervention_prompter,
     )
 
     result = anneal_classic(cfg)

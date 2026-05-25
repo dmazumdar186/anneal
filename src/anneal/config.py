@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from anneal.adversarial.judge import Judge
     from anneal.sast.base import SastRunner
     from anneal.repograph.base import RepoGraph
+    from anneal.intervention.pause import InterventionPrompter
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,14 @@ class AnnealConfig:
     # seed=None with deterministic=True → auto-set to 42 in __post_init__.
     deterministic: bool = False
     seed: int | None = None
+
+    # Human-in-the-loop pause mode (T4.17)
+    # interactive=False (default): current automated/CI behavior — no stdin prompts.
+    # interactive=True: pause at oscillation, budget, and patch_conflict failure modes.
+    # intervention_prompter=None with interactive=True → a default InterventionPrompter()
+    #   is constructed at loop start.  Set explicitly to inject a custom prompter or stub.
+    interactive: bool = False
+    intervention_prompter: "InterventionPrompter | None" = None
 
     def __post_init__(self) -> None:
         if self.audit_samples < 1:

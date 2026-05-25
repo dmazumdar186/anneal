@@ -318,6 +318,15 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
             cfg.audit_vote_threshold,
         )
 
+    # ── Resolve InterventionPrompter (lazy, once before the loop) ─────────────
+    _prompter = None
+    if cfg.interactive:
+        if cfg.intervention_prompter is not None:
+            _prompter = cfg.intervention_prompter
+        else:
+            from anneal.intervention.pause import InterventionPrompter  # noqa: PLC0415
+            _prompter = InterventionPrompter()
+
     try:
         for r in range(1, cfg.max_rounds + 1):
             # Budget gate at the TOP of every round (plan says "wrap each LLM
@@ -325,6 +334,21 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
             try:
                 budget.check()
             except BudgetExceeded:
+                if _prompter is not None:
+                    from anneal.intervention.pause import Intervention  # noqa: PLC0415
+                    choice, payload = _prompter.prompt_at_budget(budget.total_usd, cfg.max_cost_usd)
+                    if choice == Intervention.RAISE_BUDGET:
+                        new_max = payload.get("new_max_usd", cfg.max_cost_usd)
+                        cfg.max_cost_usd = new_max
+                        budget._max_usd = new_max
+                        logger.info("Budget raised to $%.4f by user", new_max)
+                        continue  # retry this round with raised budget
+                    elif choice == Intervention.CONTINUE:
+                        logger.info("User chose to continue past budget limit at risk")
+                        # Disable the budget ceiling for the rest of the run
+                        budget._max_usd = float("inf")
+                        continue
+                    # ABORT (or any other) → fall through to exit
                 result = _build_result(False, r - 1 if r > 1 else 1, "budget")
                 break
 
@@ -345,6 +369,13 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
                 sast_findings_list = []
 
             logger.info("Round %d: sast: %d finding(s)", r, len(sast_findings_list))
+
+            # ── Inject user hint from a prior oscillation pause (if any) ──────
+            # Appended to sast_md so the auditor sees it as part of pre-pass context.
+            _user_hint: str = cfg.__dict__.pop("_user_hint", "")
+            if _user_hint:
+                sast_md = (sast_md + "\n\n" if sast_md else "") + f"## User hint\n{_user_hint}"
+                logger.info("Round %d: injecting user hint into audit context", r)
 
             # ── Repo-graph context ─────────────────────────────────────────────
             repograph_md = ""
@@ -411,6 +442,35 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             if oscillation_detected(report.findings, finding_history):
                 logger.debug("Round %d: oscillation detected", r)
+                if _prompter is not None:
+                    from anneal.intervention.pause import Intervention  # noqa: PLC0415
+                    choice, payload = _prompter.prompt_at_oscillation(report, r)
+                    if choice == Intervention.DISMISS_FINDING:
+                        fp = payload.get("fingerprint", "")
+                        if fp and _store is not None:
+                            _store.add(fp, "dismissed via interactive oscillation pause")
+                            logger.info("Oscillation: dismissed finding %s", fp)
+                        # Re-apply suppressions and continue — don't break
+                        if _store is not None:
+                            report = _apply_suppressions(report, _store)
+                        finding_history.append(_fingerprint_set(report.findings))
+                        continue
+                    elif choice == Intervention.ADD_HINT:
+                        hint = payload.get("hint", "")
+                        logger.info("Oscillation: user hint injected for next round: %r", hint)
+                        # Inject hint into next round by tagging it on cfg for the auditor
+                        # to pick up.  We prepend it to sast_md in the next iteration
+                        # by storing on a mutable container attached to cfg.
+                        if not hasattr(cfg, "_user_hint"):
+                            object.__setattr__(cfg, "_user_hint", hint) if False else None
+                        cfg.__dict__["_user_hint"] = hint
+                        finding_history.append(_fingerprint_set(report.findings))
+                        continue
+                    elif choice == Intervention.CONTINUE:
+                        logger.info("Oscillation: user chose to continue without changes")
+                        finding_history.append(_fingerprint_set(report.findings))
+                        continue
+                    # ABORT → fall through to exit
                 result = _build_result(False, r, "oscillation")
                 break
 
@@ -440,6 +500,19 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             if not ar.ok:
                 logger.debug("Round %d: patch conflict: %s", r, ar.stderr)
+                if _prompter is not None:
+                    from anneal.intervention.pause import Intervention  # noqa: PLC0415
+                    conflict_files = [
+                        line[6:]
+                        for line in (patch.content if hasattr(patch, "content") else "").splitlines()
+                        if line.startswith("+++ b/")
+                    ]
+                    excerpt = getattr(ar, "stderr", "") or ""
+                    choice, _ = _prompter.prompt_at_patch_conflict(excerpt, conflict_files)
+                    if choice == Intervention.CONTINUE:
+                        logger.info("Patch conflict: user chose to skip this round and continue")
+                        continue
+                    # ABORT → fall through to exit
                 result = _build_result(False, r, "patch_conflict")
                 break
 
