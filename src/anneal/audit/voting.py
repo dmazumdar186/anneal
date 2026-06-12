@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from anneal.audit.base import AuditReport, Auditor, Finding, Verdict, finding_fingerprint
@@ -91,8 +92,23 @@ class VotingAuditor:
         Returns:
             A single merged AuditReport.
         """
-        reports: list[AuditReport] = []
-        for i in range(self.samples):
+        # ── Fast path: single sample behaves identically to the base auditor ──
+        if self.samples == 1:
+            return self._base.audit(
+                diff,
+                repo_root,
+                sast_findings=sast_findings,
+                repograph_context=repograph_context,
+                semantic_summary=semantic_summary,
+            )
+
+        # ── Parallel sampling: run all N calls concurrently ───────────────────
+        # CostTracker is already thread-safe (guarded by threading.Lock), so
+        # no extra locking is needed here. We submit all samples at once and
+        # collect in index order to keep the audit trail deterministic.
+        reports: list[AuditReport] = [None] * self.samples  # type: ignore[list-item]
+
+        def _run_sample(index: int) -> tuple[int, AuditReport]:
             report = self._base.audit(
                 diff,
                 repo_root,
@@ -100,18 +116,20 @@ class VotingAuditor:
                 repograph_context=repograph_context,
                 semantic_summary=semantic_summary,
             )
-            reports.append(report)
             logger.debug(
                 "VotingAuditor sample %d/%d: verdict=%s findings=%d",
-                i + 1,
+                index + 1,
                 self.samples,
                 report.verdict,
                 len(report.findings),
             )
+            return index, report
 
-        # ── Fast path: single sample behaves identically to the base auditor ──
-        if self.samples == 1:
-            return reports[0]
+        with ThreadPoolExecutor(max_workers=self.samples) as executor:
+            futures = {executor.submit(_run_sample, i): i for i in range(self.samples)}
+            for future in as_completed(futures):
+                idx, report = future.result()  # re-raises if _run_sample raised
+                reports[idx] = report
 
         # ── Consensus: count fingerprint occurrences across samples ───────────
         # fp → first Finding encountered (sample 1 wins on wording)

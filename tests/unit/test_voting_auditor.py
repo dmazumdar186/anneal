@@ -111,3 +111,43 @@ def test_validation_threshold_exceeds_samples() -> None:
     mock = MagicMock()
     with pytest.raises(ValueError, match="vote_threshold"):
         VotingAuditor(mock, samples=3, vote_threshold=4)
+
+
+def test_parallel_execution_same_vote_totals() -> None:
+    """Parallel sampling (N=3) produces the same vote totals as sequential execution.
+
+    The VotingAuditor now runs samples in parallel via ThreadPoolExecutor.
+    This test verifies that the consensus result is identical to what a
+    sequential loop would produce: same surviving findings, same verdict,
+    same token count.
+    """
+    shared = _make_finding(summary="shared bug")   # appears in samples 1 & 2
+    rare = _make_finding(summary="rare bug")        # appears only in sample 3
+
+    report1 = _make_report(verdict="FAIL", findings=[shared], tokens_used=100)
+    report2 = _make_report(verdict="FAIL", findings=[shared], tokens_used=100)
+    report3 = _make_report(verdict="WARNINGS", findings=[rare], tokens_used=100)
+
+    # Use side_effect list — ThreadPoolExecutor calls audit() in any order, but
+    # since the mock is shared, the 3 calls will consume the 3 reports in the
+    # order they are dispatched.  The consensus (fingerprint counting) is
+    # order-independent, so the outcome is deterministic regardless of
+    # which thread grabs which report.
+    mock = _mock_auditor(report1, report2, report3)
+
+    voter = VotingAuditor(mock, samples=3, vote_threshold=2)
+    result = voter.audit("diff", Path("/repo"))
+
+    # All 3 samples must have been called
+    assert mock.audit.call_count == 3
+
+    # "shared bug" appears in 2/3 samples → survives threshold=2
+    # "rare bug" appears in 1/3 samples → dropped
+    assert len(result.findings) == 1
+    assert result.findings[0].summary == "shared bug"
+
+    # Verdict: 2× FAIL, 1× WARNINGS → majority is FAIL
+    assert result.verdict == "FAIL"
+
+    # Token sum unchanged
+    assert result.tokens_used == 300

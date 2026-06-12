@@ -243,6 +243,72 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     show.add_argument("log_dir", help="Path to the .anneal/<timestamp>/ log directory.")
 
+    # --- batch ---
+    batch = subparsers.add_parser(
+        "batch",
+        help="Fan out anneal across multiple repos/PRs in parallel.",
+    )
+    batch.add_argument(
+        "refs_file",
+        metavar="REFS_FILE",
+        help=(
+            "Path to a JSON array or plain-text file listing repos/refs to audit. "
+            "JSON format: [{\"repo\": \"<path>\", \"ref\": \"<ref>\", "
+            "\"diff_file\": \"<optional>\"}]. "
+            "Plain text: one 'repo_path:ref' per line."
+        ),
+    )
+    batch.add_argument(
+        "--mode",
+        choices=["classic", "adversarial"],
+        default="classic",
+        help="Anneal mode to run for each entry (default: classic).",
+    )
+    batch.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Maximum number of concurrent anneal runs (default: 4).",
+    )
+    batch.add_argument(
+        "--tier",
+        choices=["cheap", "cheap-gemini", "balanced", "premium", "ultra"],
+        default="balanced",
+        help="Model preset bundle applied to every row (default: balanced).",
+    )
+    batch.add_argument(
+        "--max-rounds",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Max rounds per entry (default: 10).",
+    )
+    batch.add_argument(
+        "--until-clean",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Consecutive clean rounds required to converge (default: 2).",
+    )
+    batch.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=1.00,
+        metavar="FLOAT",
+        help="Per-entry budget ceiling in USD (default: 1.00).",
+    )
+    batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Audit only; skip patching for each entry.",
+    )
+    batch.add_argument(
+        "--no-worktree",
+        action="store_true",
+        help="Operate on each repo in-place rather than in a git worktree.",
+    )
+
     # --- suppressions ---
     sup = subparsers.add_parser(
         "suppressions",
@@ -696,6 +762,74 @@ def _run_canary(args: argparse.Namespace) -> NoReturn:
     raise SystemExit(0 if report.overall_pass else 1)
 
 
+# ── Batch-mode flow ───────────────────────────────────────────────────────────
+
+
+def _run_batch(args: argparse.Namespace) -> NoReturn:
+    """Execute batch mode: fan out anneal across all entries in refs_file."""
+    from anneal.config import load_env, MissingCredentials
+    from anneal.batch import run_batch
+
+    refs_file = Path(args.refs_file)
+    if not refs_file.exists():
+        print(f"anneal batch: refs-file not found: {refs_file}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.max_workers < 1:
+        print(
+            f"anneal batch: --max-workers must be >= 1, got {args.max_workers}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    # --- Load .env from anneal root and merge with shell env ---
+    anneal_root = _find_anneal_root()
+    file_env: dict[str, str] = {}
+    if anneal_root:
+        file_env = load_env(anneal_root)
+    api_keys: dict[str, str] = {**file_env, **{k: v for k, v in os.environ.items() if v}}
+
+    # --- Print resolved config ---
+    print(f"anneal batch  refs={refs_file}  mode={args.mode}  tier={args.tier}  max_workers={args.max_workers}")
+
+    # --- Extra per-entry config forwarded to each worker ---
+    extra_kwargs: dict = {
+        "max_rounds": args.max_rounds,
+        "until_clean": args.until_clean,
+        "max_cost_usd": args.max_cost_usd,
+        "dry_run": args.dry_run,
+        "no_worktree": args.no_worktree,
+    }
+
+    try:
+        summary = run_batch(
+            refs_file,
+            mode=args.mode,
+            max_workers=args.max_workers,
+            tier=args.tier,
+            api_keys=api_keys,
+            extra_kwargs=extra_kwargs,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"anneal batch: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    except MissingCredentials as exc:
+        print(f"anneal batch: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+    # --- Pretty-print summary ---
+    print(f"\nanneal batch — {summary.total} entries")
+    print(f"  ok:        {summary.ok}")
+    print(f"  failed:    {summary.failed}")
+    print(f"  converged: {summary.converged}")
+    print(f"  cost:      ${summary.total_cost_usd:.4f}")
+    print(f"  wall:      {summary.wall_seconds:.1f}s")
+    print(f"  results:   {refs_file}.batch_results.json")
+
+    # Exit 0 if all rows succeeded (ok+skipped == total and no failures)
+    raise SystemExit(0 if summary.failed == 0 else 1)
+
+
 # ── Suppressions subcommand ────────────────────────────────────────────────────
 
 
@@ -760,6 +894,9 @@ def main() -> None:
 
     elif args.command == "adversarial":
         _run_adversarial(args)
+
+    elif args.command == "batch":
+        _run_batch(args)
 
     elif args.command == "show":
         _run_show(args)
