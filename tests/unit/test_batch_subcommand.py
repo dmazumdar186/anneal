@@ -273,3 +273,78 @@ def test_batch_cli_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         main()
 
     assert exc_info.value.code == 0
+
+
+# ── Test 5: judge-parallelism flags forwarded to run_batch extra_kwargs ─────────
+
+
+def test_batch_cli_judge_flags_forwarded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--no-parallel-judge and --judge-max-workers reach run_batch's extra_kwargs."""
+    refs_file = _write_json_refs(
+        tmp_path,
+        [{"repo": str(tmp_path / "repo_a"), "ref": "HEAD~1"}],
+    )
+
+    captured_extra_kwargs: dict = {}
+
+    def _fake_run_batch(refs_path, *, mode, max_workers, tier, api_keys, extra_kwargs):
+        captured_extra_kwargs.update(extra_kwargs)
+        # Write the expected output file so CLI print doesn't crash
+        out = refs_path.with_suffix(refs_path.suffix + ".batch_results.json")
+        out.write_text(json.dumps({"rows": []}), encoding="utf-8")
+        return BatchSummary(
+            total=1,
+            ok=1,
+            failed=0,
+            skipped=0,
+            converged=1,
+            total_cost_usd=0.00,
+            wall_seconds=0.1,
+            rows=[
+                BatchRowResult(
+                    label="repo_a@HEAD~1",
+                    repo=str(tmp_path / "repo_a"),
+                    ref="HEAD~1",
+                    diff_file=None,
+                    status="ok",
+                    converged=True,
+                    rounds=1,
+                    reason="clean",
+                    cost_usd=0.00,
+                    log_dir=None,
+                    error=None,
+                    wall_seconds=0.1,
+                )
+            ],
+        )
+
+    import anneal.batch as batch_mod
+    monkeypatch.setattr(batch_mod, "run_batch", _fake_run_batch)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "anneal",
+            "batch",
+            str(refs_file),
+            "--mode", "adversarial",
+            "--no-parallel-judge",
+            "--judge-max-workers", "2",
+        ],
+    )
+
+    from anneal.cli import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 0
+
+    # Verify flags were forwarded
+    assert captured_extra_kwargs.get("parallel_judge") is False, (
+        f"parallel_judge should be False, got {captured_extra_kwargs.get('parallel_judge')!r}"
+    )
+    assert captured_extra_kwargs.get("judge_max_workers") == 2, (
+        f"judge_max_workers should be 2, got {captured_extra_kwargs.get('judge_max_workers')!r}"
+    )

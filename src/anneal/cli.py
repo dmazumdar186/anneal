@@ -308,6 +308,27 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Operate on each repo in-place rather than in a git worktree.",
     )
+    batch.add_argument(
+        "--no-parallel-judge",
+        action="store_false",
+        dest="parallel_judge",
+        default=True,
+        help=(
+            "Disable parallel Judge calls within each adversarial worker and run them "
+            "sequentially. No-op in classic mode. Useful for debugging or when "
+            "judge concurrency causes rate-limit errors."
+        ),
+    )
+    batch.add_argument(
+        "--judge-max-workers",
+        type=int,
+        default=4,
+        metavar="N",
+        help=(
+            "Maximum concurrent Judge threads per adversarial worker (default 4). "
+            "No-op in classic mode. Must be >= 1."
+        ),
+    )
 
     # --- suppressions ---
     sup = subparsers.add_parser(
@@ -792,6 +813,14 @@ def _run_batch(args: argparse.Namespace) -> NoReturn:
     # --- Print resolved config ---
     print(f"anneal batch  refs={refs_file}  mode={args.mode}  tier={args.tier}  max_workers={args.max_workers}")
 
+    judge_max_workers = args.judge_max_workers
+    if judge_max_workers < 1:
+        print(
+            f"anneal batch: --judge-max-workers must be >= 1, got {judge_max_workers}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     # --- Extra per-entry config forwarded to each worker ---
     extra_kwargs: dict = {
         "max_rounds": args.max_rounds,
@@ -799,6 +828,9 @@ def _run_batch(args: argparse.Namespace) -> NoReturn:
         "max_cost_usd": args.max_cost_usd,
         "dry_run": args.dry_run,
         "no_worktree": args.no_worktree,
+        # Judge-parallelism flags (adversarial mode only; ignored by classic)
+        "parallel_judge": args.parallel_judge,
+        "judge_max_workers": judge_max_workers,
     }
 
     try:
