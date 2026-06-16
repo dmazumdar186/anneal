@@ -368,6 +368,7 @@ def test_sast_findings_passed_to_auditor(tmp_path: Path) -> None:
             sast_findings: str = "",
             repograph_context: str = "",
             semantic_summary: str = "",  # noqa: ARG002
+            prior_attempts: str = "",  # noqa: ARG002
         ) -> AuditReport:
             captured_kwargs.append({"sast_findings": sast_findings})
             return AuditReport(
@@ -471,6 +472,7 @@ def test_repograph_context_passed_to_auditor(tmp_path: Path) -> None:
             sast_findings: str = "",
             repograph_context: str = "",
             semantic_summary: str = "",  # noqa: ARG002
+            prior_attempts: str = "",  # noqa: ARG002
         ) -> AuditReport:
             captured_kwargs.append({"repograph_context": repograph_context})
             return AuditReport(

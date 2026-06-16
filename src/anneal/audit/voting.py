@@ -69,6 +69,7 @@ class VotingAuditor:
         sast_findings: str = "",
         repograph_context: str = "",
         semantic_summary: str = "",
+        prior_attempts: str = "",
     ) -> AuditReport:
         """Run base_auditor N times and return a consensus-merged AuditReport.
 
@@ -88,6 +89,9 @@ class VotingAuditor:
             repograph_context: Optional repo-graph caller context forwarded to each sample.
             semantic_summary:  Optional AST-derived semantic diff summary forwarded
                                to each sample.
+            prior_attempts:    Optional formatted prior-round history forwarded to
+                               each sample (loop-with-memory; see audit.base
+                               format_prior_attempts).
 
         Returns:
             A single merged AuditReport.
@@ -100,6 +104,7 @@ class VotingAuditor:
                 sast_findings=sast_findings,
                 repograph_context=repograph_context,
                 semantic_summary=semantic_summary,
+                prior_attempts=prior_attempts,
             )
 
         # ── Parallel sampling: run all N calls concurrently ───────────────────
@@ -115,6 +120,7 @@ class VotingAuditor:
                 sast_findings=sast_findings,
                 repograph_context=repograph_context,
                 semantic_summary=semantic_summary,
+                prior_attempts=prior_attempts,
             )
             logger.debug(
                 "VotingAuditor sample %d/%d: verdict=%s findings=%d",

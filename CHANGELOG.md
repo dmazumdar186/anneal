@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Loop with memory (classic mode).** The auditor at round N+1 now receives a "Prior round attempts" markdown block summarizing what was raised in earlier rounds and the fixer's rationale for each attempted patch. The prompt instructs the auditor to (a) avoid re-raising findings the latest fix resolved, (b) re-raise findings the fix tried-and-failed at, and (c) avoid proposing approaches the fixer already tried. Adopted from the vibe-check improvement-loop pattern; same Karpathy-derived discipline as `anneal`'s existing structure, made explicit at the prompt level.
+  - New: `PriorAttempt` dataclass + `format_prior_attempts(history)` helper in `anneal.audit.base`.
+  - New: `prior_attempts: str = ""` kwarg on the `Auditor` Protocol, `PipelineAuditor.audit()`, and `VotingAuditor.audit()` (back-compat default).
+  - New: classic loop tracks one `PriorAttempt` per FAIL/WARNINGS round (verdict + finding summaries + fixer rationale) and feeds it forward. Captured even when the patch fails to apply.
+  - Hard cap of 5 prior rounds in the prompt; per-rationale cap of 600 chars with ellipsis truncation. Bounds context size.
+  - Updated `audit/prompts/pipeline_auditor.md` with the prior-attempts handling note.
+  - Tests: `test_prior_attempts_format.py` (7), `test_pipeline_auditor_prior_attempts.py` (4), `test_voting_prior_attempts.py` (3), `test_loop_classic_memory.py` (2). 16 new + 0 regressions (157 pass / 4 skipped baseline).
+  - Adversarial mode unchanged (uses Red/Blue Attack protocol, separate from `Auditor`). A future change can mirror the pattern there if useful.
+
 ## v0.1 — 2026-05-25
 
 18 roadmap items + 1 bonus shipped. Tests: 73 → 136.

@@ -269,6 +269,7 @@ class PipelineAuditor:
         sast_findings: str = "",
         repograph_context: str = "",
         semantic_summary: str = "",
+        prior_attempts: str = "",
     ) -> AuditReport:
         """Run the pipeline-auditor prompt against diff and parse findings.
 
@@ -289,10 +290,25 @@ class PipelineAuditor:
                                the repo-graph context and the diff so the auditor
                                can skip cosmetic hunks and prioritise structural
                                changes.
+            prior_attempts:    Optional formatted markdown describing prior rounds
+                               (findings + fixer rationale). When non-empty, the
+                               "## Prior round attempts" block is injected at the
+                               very top of the user message so the auditor sees
+                               loop memory before any other context. Produced by
+                               ``anneal.audit.base.format_prior_attempts(history)``.
 
         Returns:
             Parsed AuditReport.
         """
+        prior_block = ""
+        if prior_attempts:
+            # prior_attempts is already a self-contained markdown block with its
+            # own heading — just terminate with a separator.
+            prior_block = (
+                f"{prior_attempts}\n"
+                "---\n\n"
+            )
+
         sast_block = ""
         if sast_findings:
             sast_block = (
@@ -317,6 +333,7 @@ class PipelineAuditor:
             )
 
         user_msg = (
+            f"{prior_block}"
             f"{sast_block}"
             f"{repograph_block}"
             f"{semantic_block}"

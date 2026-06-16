@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from anneal.audit.base import AuditReport, finding_fingerprint
+from anneal.audit.base import AuditReport, PriorAttempt, finding_fingerprint, format_prior_attempts
 from anneal.config import AnnealConfig, build_default_sast_runner, build_default_repo_graph
 from anneal.diff.semantic import summarize_diff
 from anneal.suppressions.store import SuppressionStore
@@ -260,6 +260,10 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
     budget = CostTracker(cfg.max_cost_usd)
     clean_streak = 0
     finding_history: list[frozenset[str]] = []  # one entry per round with findings
+    # Loop memory: one PriorAttempt per FAIL/WARNINGS round, fed forward to the
+    # next round's auditor so it doesn't keep raising issues the fix resolved
+    # nor keep proposing approaches the fixer already tried.
+    prior_attempts_history: list[PriorAttempt] = []
 
     def _build_result(
         converged: bool,
@@ -401,14 +405,23 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
             if semantic_md:
                 logger.info("Round %d: semantic: %d line(s)", r, len(semantic_md.splitlines()))
 
+            # ── Prior-round attempts (loop memory) ─────────────────────────────
+            prior_md = format_prior_attempts(prior_attempts_history)
+            if prior_md:
+                logger.info(
+                    "Round %d: prior_attempts: %d round(s) of memory injected",
+                    r, len(prior_attempts_history),
+                )
+
             try:
-                if sast_md or repograph_md or semantic_md:
+                if sast_md or repograph_md or semantic_md or prior_md:
                     report = _auditor.audit(
                         current_diff,
                         worktree,
                         sast_findings=sast_md,
                         repograph_context=repograph_md,
                         semantic_summary=semantic_md,
+                        prior_attempts=prior_md,
                     )
                 else:
                     report = _auditor.audit(current_diff, worktree)
@@ -476,8 +489,26 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             finding_history.append(_fingerprint_set(report.findings))
 
+            # ── Loop memory: build per-round finding summaries ────────────────
+            # Built once per FAIL/WARNINGS round; rationale is filled in below if
+            # the fixer actually produced a patch. Captured even when the patch
+            # fails to apply — the next round still benefits from knowing what
+            # the fixer tried.
+            _round_finding_summaries = [
+                f"[{f.severity}] {f.summary}" for f in report.findings
+            ]
+
             if cfg.dry_run:
-                # dry-run: audit only, no patching
+                # dry-run: audit only, no patching — record findings without rationale
+                # so the next dry-run round still gets memory of what was raised.
+                prior_attempts_history.append(
+                    PriorAttempt(
+                        round_num=r,
+                        verdict=report.verdict,
+                        finding_summaries=_round_finding_summaries,
+                        fixer_rationale="",
+                    )
+                )
                 logger.info("Round %d: --dry-run, skipping fix step", r)
                 continue
 
@@ -497,6 +528,18 @@ def anneal_classic(cfg: AnnealConfig) -> AnnealResult:
 
             ar: ApplyResult = apply_patch(worktree, patch)
             transcript.write_fix(r, patch, ar)
+
+            # Append this round's attempt to the loop-memory history regardless of
+            # whether the patch applies cleanly. A failed patch is still signal
+            # for round N+1 ("this approach didn't even apply — try a different one").
+            prior_attempts_history.append(
+                PriorAttempt(
+                    round_num=r,
+                    verdict=report.verdict,
+                    finding_summaries=_round_finding_summaries,
+                    fixer_rationale=patch.rationale,
+                )
+            )
 
             if not ar.ok:
                 logger.debug("Round %d: patch conflict: %s", r, ar.stderr)
