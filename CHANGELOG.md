@@ -11,7 +11,10 @@
   - Hard cap of 5 prior rounds in the prompt; per-rationale cap of 600 chars with ellipsis truncation. Bounds context size.
   - Updated `audit/prompts/pipeline_auditor.md` with the prior-attempts handling note.
   - Tests: `test_prior_attempts_format.py` (7), `test_pipeline_auditor_prior_attempts.py` (4), `test_voting_prior_attempts.py` (3), `test_loop_classic_memory.py` (2). 16 new + 0 regressions (157 pass / 4 skipped baseline).
-  - Adversarial mode unchanged (uses Red/Blue Attack protocol, separate from `Auditor`). A future change can mirror the pattern there if useful.
+  - **Tests verify *injection*, not *effect*.** All tests are mock-based. Real-LLM empirical validation (does the memory actually reduce rounds-to-convergence?) is owed — see HANDOFF.md §5 for the benchmark recipe.
+  - **Prompt-caching impact: zero.** `ClaudeLLM` caches only the system block (`cache_control={"type": "ephemeral"}`); `prior_attempts` lands in the user message, which is not cached. Per-round overhead bounded at ~1.2k input tokens (5 rounds × 600 char cap + headers) ≈ $0.0036/round at Sonnet 4.6 pricing.
+  - **Back-compat:** `prior_attempts=""` is the default; existing callers and tests behave identically. The new behavior only activates when the loop populates the block (round 2+ after a FAIL/WARNINGS round).
+  - Adversarial mode unchanged (uses Red/Blue Attack protocol, separate from `Auditor`). A future change can mirror the pattern there if useful — see HANDOFF.md §5 for the design tension (over-constraining Red collapses the attack distribution).
 
 ## v0.1 — 2026-05-25
 

@@ -129,6 +129,23 @@ T4.14 patched deterministic temperature + seed control into the **classic loop o
 
 `anneal replay-am --commit cc4fca1 --repo /path/to/antigravity` — walk the AM Round 8 audit commit (14 fixes) through the classic loop and compare findings to the historical commit message. Budget ~$0.50. Still on the roadmap, not yet implemented.
 
+### 5. Loop-with-memory empirical validation (post-89ed196 — owed)
+
+Commit `89ed196` (2026-06-16) wired the auditor at round N+1 to receive a "Prior round attempts" block containing earlier rounds' findings + fixer rationales. The change is back-compat (defaults to `prior_attempts=""`, so disabled runs behave identically to pre-`89ed196`) and is verified by 16 unit tests that the block is correctly constructed, threaded through the loop, and forwarded by `VotingAuditor` to every sample.
+
+**What's NOT validated yet (honest gap):** whether real LLMs actually use the memory to converge in fewer rounds, avoid oscillation, or stop proposing dead-end approaches. All current tests use `DeterministicMockLLM` / `RecordingMockLLM` — they verify *injection*, not *effect*. A real measurement requires:
+
+1. Pick a benchmark set of diffs with planted bugs (the existing `examples/synthetic_buggy/` + a handful from SWE-Bench Lite or the AM Round-8 replay).
+2. For each diff, run `anneal classic` twice — once with prior_attempts disabled (set the kwarg path to `""` unconditionally in a fork), once enabled (current behavior).
+3. Compare per-diff: rounds-to-convergence, oscillation-detected rate, total cost (USD + tokens), final-diff quality (does the fix actually compile + pass tests).
+4. Aggregate: target metrics are (a) ≥15% reduction in median rounds-to-convergence on diffs that previously oscillated, (b) no regression in mean rounds on diffs that converged cleanly without memory, (c) cost overhead per round bounded at <$0.01 (the prior_attempts block is capped at ~5 rounds × 600 chars ≈ ~1.2k tokens; at Sonnet 4.6 input pricing $3/MTok ≈ $0.0036/round).
+
+Budget for the full benchmark: ~$2-5 with cheap-gemini tier, ~$10-15 on Sonnet. Until this benchmark is run, the change ships as a back-compat-safe addition with the expectation (not verification) that the prompt instruction works as intended. If the benchmark reveals no effect, the cost is negligible and the rollback is one-line.
+
+**Prompt-caching impact:** Verified to be zero. anneal's `ClaudeLLM` (`src/anneal/llm/claude.py:115`) attaches `cache_control={"type": "ephemeral"}` only to the **system** message. The user message — where `prior_attempts` lands — is not cached. The system-prompt cache hit rate is unaffected; the only delta is per-round user-token overhead, which is bounded by the formatter's caps.
+
+**Adversarial mode (Red/Blue):** Loop-with-memory is NOT wired into `loop_adversarial.py`. That loop uses the `Attack` / `AttackResult` protocol, not `Auditor` — a parallel feature with its own design surface (e.g., do you tell Red about prior Blue defenses? That changes the attack distribution). Open question for a follow-up session. The case for adding it: same anti-oscillation logic applies to Red repeatedly proposing the same attack vector that Blue keeps successfully defending. The case against: Red is supposed to be creative, and over-constraining it with prior context could collapse the attack distribution to "things Red knows Blue can't defend" which is the opposite of what an adversarial loop needs.
+
 ## Critical constraints
 
 - **AM is FROZEN.** Never edit `execution/infrastructure/api-proxy/`, `website/`, `website-dashboard/`, `directives/gtm_client_workflows/accessory_masters_*`, `config/accessory_masters*`, or any AM-coupled path.
