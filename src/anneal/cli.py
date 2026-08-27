@@ -50,7 +50,7 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         "--tier",
         choices=["cheap", "cheap-gemini", "balanced", "premium", "ultra"],
         default="balanced",
-        help="Model preset bundle: cheap (Gemini Flash via OpenRouter), cheap-gemini (Gemini Flash direct, needs GEMINI_API_KEY), balanced (Haiku/substantive + Gemini/judge), premium (Sonnet/substantive + Haiku/judge), ultra (Opus 4.7/substantive + Sonnet/judge). Default: balanced.",
+        help="Model preset bundle: cheap (Gemini Flash via OpenRouter), cheap-gemini (Gemini Flash direct, needs GEMINI_API_KEY), balanced (Sonnet 5/substantive + Gemini/judge), premium (Fable 5/audit-red-blue-judge + Sonnet 5/fixer), ultra (Fable 5/all roles). Default: balanced.",
     )
     p.add_argument(
         "--provider",

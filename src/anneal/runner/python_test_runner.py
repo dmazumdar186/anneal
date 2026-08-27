@@ -14,7 +14,11 @@ from anneal.adversarial.base import Attack
 from anneal.runner.sandbox import TestRunResult, run_subprocess
 
 # Env vars forwarded to the pytest child.  No API keys, no secrets.
-_PYTEST_ENV_PASSTHROUGH = ["SYSTEMROOT", "PATH", "PYTHONPATH"]
+# APPDATA is required on Windows: without it the child Python cannot compute
+# its user site-packages dir (%APPDATA%\Python\PythonXY\site-packages), so a
+# user-installed pytest is invisible and every run reports "No module named
+# pytest" -- which this runner then scores as an attack that landed (2026-08-27).
+_PYTEST_ENV_PASSTHROUGH = ["SYSTEMROOT", "PATH", "PYTHONPATH", "APPDATA"]
 
 
 def run_python_test(

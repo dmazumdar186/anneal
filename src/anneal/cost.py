@@ -1,6 +1,6 @@
 """Token counter and per-run budget enforcement.
 
-Pricing table (USD per 1 million tokens). Updated 2026-05-25.
+Pricing table (USD per 1 million tokens). Updated 2026-08-27.
 Sources: anthropic.com/pricing and openrouter.ai/models and ai.google.dev/pricing.
 
 Anthropic direct (via ClaudeLLM) — full per-token-type pricing:
@@ -10,6 +10,14 @@ Anthropic direct (via ClaudeLLM) — full per-token-type pricing:
         input $3/M, cache_read $0.30/M, cache_write $3.75/M, output $15/M
     claude-opus-4-7:
         input $15/M, cache_read $1.50/M, cache_write $18.75/M, output $75/M
+    claude-sonnet-5 (execution tier):
+        input $2/M, cache_read $0.20/M, cache_write $2.50/M, output $10/M
+    claude-opus-5 (no tier slot; explicit only):
+        input $5/M, cache_read $0.50/M, cache_write $6.25/M, output $25/M
+    claude-fable-5 (judgement tier, 2026-08-27):
+        input $10/M, cache_read $1/M, cache_write $12.50/M, output $50/M
+    (5-series verified 2026-08-27 against platform.claude.com/docs/en/about-claude/pricing.
+     OpenRouter charges the same rates for anthropic/claude-*-5 and passes cache usage through.)
 
 Google Gemini direct (via GeminiLLM — model IDs as Gemini identifiers):
     gemini-2.5-flash:
@@ -70,6 +78,26 @@ _ANTHROPIC_PRICES: dict[str, _ModelPricing] = {
         "cache_write": 18.75,
         "output": 75.00,
     },
+    # 5-series (verified 2026-08-27). Sonnet 5 = execution tier, Fable 5 = judgement
+    # tier per ~/.claude/rules/model-tier.md; Opus 5 has no tier slot.
+    "claude-sonnet-5": {
+        "input": 2.00,
+        "cache_read": 0.20,
+        "cache_write": 2.50,
+        "output": 10.00,
+    },
+    "claude-opus-5": {
+        "input": 5.00,
+        "cache_read": 0.50,
+        "cache_write": 6.25,
+        "output": 25.00,
+    },
+    "claude-fable-5": {
+        "input": 10.00,
+        "cache_read": 1.00,
+        "cache_write": 12.50,
+        "output": 50.00,
+    },
 }
 
 # Flat blended rates for non-Anthropic / OpenRouter models (no cache breakdown).
@@ -99,6 +127,11 @@ _OPENROUTER_PRICES: dict[str, _ModelPricing] = {
     "meta-llama/llama-3.3-70b-instruct": _flat(0.40),
     "openai/gpt-5": _flat(8.00),
     "anthropic/claude-haiku-4-5": _flat(2.10),  # Haiku via OR (~5% markup, no cache)
+    # OR charges Anthropic-direct rates for the 5-series and reports cache usage,
+    # so the per-category table applies unchanged (verified 2026-08-12 / 2026-08-27).
+    "anthropic/claude-sonnet-5": _ANTHROPIC_PRICES["claude-sonnet-5"],
+    "anthropic/claude-opus-5": _ANTHROPIC_PRICES["claude-opus-5"],
+    "anthropic/claude-fable-5": _ANTHROPIC_PRICES["claude-fable-5"],
 }
 
 _ALL_MODEL_PRICES: dict[str, _ModelPricing] = {
@@ -113,6 +146,13 @@ _PRICES_USD_PER_MILLION: dict[str, float] = {
     "claude-haiku-4-5": 2.0,
     "claude-sonnet-4-6": 5.0,
     "claude-opus-4-7": 25.0,
+    # 5-series blended = input x 5/3, same ratio the legacy rows use.
+    "claude-sonnet-5": 3.33,
+    "claude-opus-5": 8.33,
+    "claude-fable-5": 16.67,
+    "anthropic/claude-sonnet-5": 3.33,
+    "anthropic/claude-opus-5": 8.33,
+    "anthropic/claude-fable-5": 16.67,
     "gemini-2.5-flash": 0.30,           # blended estimate for legacy flat path
     "google/gemini-2.5-flash": 0.30,
     "deepseek/deepseek-chat": 0.50,
@@ -126,7 +166,7 @@ _DEFAULT_PRICE = 10.0
 _PRICE_PER_M = _PRICES_USD_PER_MILLION
 _DEFAULT_PRICE_PER_M = _DEFAULT_PRICE
 
-_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_MODEL = "claude-sonnet-5"  # Haiku is banned (model-tier.md); execution tier is the floor
 
 
 class BudgetExceeded(Exception):
@@ -202,7 +242,7 @@ class CostTracker:
             tokens_used: Total tokens (input + output, as reported by the adapter).
                          When cache fields are omitted this is used directly with
                          the flat blended rate (legacy behaviour).
-            model: Model name. Defaults to claude-haiku-4-5-20251001 if None.
+            model: Model name. Defaults to claude-sonnet-5 if None.
             cache_read_tokens: Tokens served from Anthropic prompt cache.
             cache_creation_tokens: Tokens written into Anthropic prompt cache.
             output_tokens: Output / completion tokens (needed to split input correctly).

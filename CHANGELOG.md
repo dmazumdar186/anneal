@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **5-series models, Haiku removed from every tier (2026-08-27).** `balanced` now runs Sonnet 5 (was Haiku 4.5, which is banned by the workspace model-tier rule); `premium` runs Fable 5 for auditor/red/blue/judge with Sonnet 5 as fixer; `ultra` is Fable 5 everywhere. `claude-sonnet-5` is the new default for `ClaudeLLM`, `AnnealConfig.model`, and `CostTracker`. `cost.py` gains cache-aware rows for `claude-sonnet-5` / `claude-opus-5` / `claude-fable-5` (and their `anthropic/` OpenRouter slugs) verified against the pricing page on 2026-08-27 -- before this, any 5-series run fell through to the $10/M flat default and mis-stated spend. Legacy 4.x rows kept so old run records still cost-resolve.
+
 ### Added
 
 - **Loop with memory (classic mode).** The auditor at round N+1 now receives a "Prior round attempts" markdown block summarizing what was raised in earlier rounds and the fixer's rationale for each attempted patch. The prompt instructs the auditor to (a) avoid re-raising findings the latest fix resolved, (b) re-raise findings the fix tried-and-failed at, and (c) avoid proposing approaches the fixer already tried. Adopted from the vibe-check improvement-loop pattern; same Karpathy-derived discipline as `anneal`'s existing structure, made explicit at the prompt level.

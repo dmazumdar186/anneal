@@ -136,3 +136,27 @@ def test_cost_tracker_thread_safe() -> None:
             f.result()  # re-raise any exception
 
     assert tracker.total_tokens == n_threads * tokens_per_thread
+
+
+def test_fable_5_cache_aware_pricing() -> None:
+    """1M cache-read + 1M cache-write + 1M output on claude-fable-5 = $1 + $12.50 + $50 (2026-08-27 list)."""
+    tracker = CostTracker(max_usd=100.0)
+    tracker.add(
+        tokens_used=3_000_000,
+        model="claude-fable-5",
+        cache_read_tokens=1_000_000,
+        cache_creation_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    assert abs(tracker.total_usd - 63.50) < 0.01
+
+
+def test_five_series_never_falls_to_flat_default() -> None:
+    """A 5-series model must have a real pricing row; the $10/M unknown-model fallback hid real spend."""
+    from anneal.cost import _ALL_MODEL_PRICES, _DEFAULT_PRICE
+    for model in ("claude-sonnet-5", "claude-opus-5", "claude-fable-5",
+                  "anthropic/claude-sonnet-5", "anthropic/claude-opus-5", "anthropic/claude-fable-5"):
+        row = _ALL_MODEL_PRICES[model]
+        assert row["input"] != _DEFAULT_PRICE or row["output"] != _DEFAULT_PRICE
+        assert row["cache_read"] == pytest.approx(row["input"] * 0.1)
+        assert row["cache_write"] == pytest.approx(row["input"] * 1.25)

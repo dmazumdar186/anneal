@@ -139,7 +139,7 @@ class AnnealConfig:
                 )
 
     # Model overrides (None = use default)
-    model: str = "claude-haiku-4-5-20251001"
+    model: str = "claude-sonnet-5"  # Haiku 4.5 is banned per ~/.claude/rules/model-tier.md
     auditor_model: str | None = None
     fixer_model: str | None = None
     red_model: str | None = None
@@ -287,9 +287,13 @@ def resolve_tier(
     Tiers (per plan):
       cheap        -> gemini-2.5-flash for all roles, openrouter
       cheap-gemini -> gemini-2.5-flash for all roles, direct gemini provider (GEMINI_API_KEY)
-      balanced     -> haiku 4.5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
-      premium      -> sonnet 4.6 for audit/fix/red/blue (anthropic), haiku 4.5 for judge (anthropic)
-      ultra        -> opus 4.7 for audit/fix/red/blue (anthropic), sonnet 4.6 for judge (anthropic)
+      balanced     -> sonnet 5 for audit/fix/red/blue (anthropic), gemini flash for judge (openrouter)
+      premium      -> fable 5 for audit/red/blue/judge (judgement), sonnet 5 for fixer (execution)
+      ultra        -> fable 5 for every role (anthropic)
+
+    Haiku 4.5 is banned workspace-wide (~/.claude/rules/model-tier.md, 2026-06-14) and
+    no tier resolves to it. Auditing is judgement work under that rule; only premium and
+    ultra satisfy it in full -- balanced is the cost-tier compromise, chosen deliberately.
 
     Example::
 
@@ -313,29 +317,29 @@ def resolve_tier(
 
         >>> resolve_tier("balanced")
         {
-            "auditor": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-            "fixer":   {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-            "red":     {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-            "blue":    {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "auditor": {"provider": "anthropic", "model": "claude-sonnet-5"},
+            "fixer":   {"provider": "anthropic", "model": "claude-sonnet-5"},
+            "red":     {"provider": "anthropic", "model": "claude-sonnet-5"},
+            "blue":    {"provider": "anthropic", "model": "claude-sonnet-5"},
             "judge":   {"provider": "openrouter", "model": "google/gemini-2.5-flash"},
         }
 
         >>> resolve_tier("premium")
         {
-            "auditor": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-            "fixer":   {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-            "red":     {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-            "blue":    {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-            "judge":   {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
+            "auditor": {"provider": "anthropic", "model": "claude-fable-5"},
+            "fixer":   {"provider": "anthropic", "model": "claude-sonnet-5"},
+            "red":     {"provider": "anthropic", "model": "claude-fable-5"},
+            "blue":    {"provider": "anthropic", "model": "claude-fable-5"},
+            "judge":   {"provider": "anthropic", "model": "claude-fable-5"},
         }
 
         >>> resolve_tier("ultra")
         {
-            "auditor": {"provider": "anthropic", "model": "claude-opus-4-7"},
-            "fixer":   {"provider": "anthropic", "model": "claude-opus-4-7"},
-            "red":     {"provider": "anthropic", "model": "claude-opus-4-7"},
-            "blue":    {"provider": "anthropic", "model": "claude-opus-4-7"},
-            "judge":   {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+            "auditor": {"provider": "anthropic", "model": "claude-fable-5"},
+            "fixer":   {"provider": "anthropic", "model": "claude-fable-5"},
+            "red":     {"provider": "anthropic", "model": "claude-fable-5"},
+            "blue":    {"provider": "anthropic", "model": "claude-fable-5"},
+            "judge":   {"provider": "anthropic", "model": "claude-fable-5"},
         }
 
     Args:
@@ -349,9 +353,10 @@ def resolve_tier(
     """
     _GEMINI_FLASH = {"provider": "openrouter", "model": "google/gemini-2.5-flash"}
     _GEMINI_FLASH_DIRECT = {"provider": "gemini", "model": "gemini-2.5-flash"}
-    _HAIKU = {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"}
-    _SONNET = {"provider": "anthropic", "model": "claude-sonnet-4-6"}
-    _OPUS_4_7 = {"provider": "anthropic", "model": "claude-opus-4-7"}
+    # Full names pinned per ~/.claude/rules/model-tier.md. Haiku has no constant
+    # on purpose: it is banned and must not be reachable from any tier.
+    _SONNET_5 = {"provider": "anthropic", "model": "claude-sonnet-5"}
+    _FABLE_5 = {"provider": "anthropic", "model": "claude-fable-5"}
 
     if tier == "cheap":
         return {
@@ -371,27 +376,28 @@ def resolve_tier(
         }
     elif tier == "balanced":
         return {
-            "auditor": _HAIKU,
-            "fixer":   _HAIKU,
-            "red":     _HAIKU,
-            "blue":    _HAIKU,
+            "auditor": _SONNET_5,
+            "fixer":   _SONNET_5,
+            "red":     _SONNET_5,
+            "blue":    _SONNET_5,
             "judge":   _GEMINI_FLASH,
         }
     elif tier == "premium":
+        # Judgement roles on the judgement tier; the fixer executes a stated finding.
         return {
-            "auditor": _SONNET,
-            "fixer":   _SONNET,
-            "red":     _SONNET,
-            "blue":    _SONNET,
-            "judge":   _HAIKU,
+            "auditor": _FABLE_5,
+            "fixer":   _SONNET_5,
+            "red":     _FABLE_5,
+            "blue":    _FABLE_5,
+            "judge":   _FABLE_5,
         }
     elif tier == "ultra":
         return {
-            "auditor": _OPUS_4_7,
-            "fixer":   _OPUS_4_7,
-            "red":     _OPUS_4_7,
-            "blue":    _OPUS_4_7,
-            "judge":   _SONNET,
+            "auditor": _FABLE_5,
+            "fixer":   _FABLE_5,
+            "red":     _FABLE_5,
+            "blue":    _FABLE_5,
+            "judge":   _FABLE_5,
         }
     else:
         raise ValueError(

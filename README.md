@@ -46,12 +46,14 @@ anneal suppressions remove <id>
 | Tier | Auditor / Fixer / Red / Blue | Judge | Provider | Approx cost / round |
 |------|------------------------------|-------|----------|---------------------|
 | `cheap` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | OpenRouter (all) | ~$0.01 |
-| `balanced` (default) | `claude-haiku-4-5-20251001` | `google/gemini-2.5-flash` | Anthropic + OpenRouter | ~$0.05 |
-| `premium` | `claude-sonnet-4-6` | `claude-haiku-4-5-20251001` | Anthropic (all) | ~$0.20 |
-| `ultra` | `claude-opus-4-7` | `claude-sonnet-4-6` | Anthropic (all) | ~$1.00 |
+| `balanced` (default) | `claude-sonnet-5` | `google/gemini-2.5-flash` | Anthropic + OpenRouter | ~$0.10 |
+| `premium` | `claude-fable-5` (fixer: `claude-sonnet-5`) | `claude-fable-5` | Anthropic (all) | ~$0.60 |
+| `ultra` | `claude-fable-5` | `claude-fable-5` | Anthropic (all) | ~$0.80 |
 | `cheap-gemini` | `gemini-2.0-flash` | `gemini-2.0-flash` | Gemini direct | ~$0.01 |
 
 Use `--tier ultra` for high-stakes diffs (security, payments, migrations).
+Haiku 4.5 is banned workspace-wide and no tier resolves to it. Cost column is a rough
+per-round proxy at 2026-08-27 list prices (Fable 5 = $10/$50 per MTok).
 Use `--tier cheap-gemini` when you have a Gemini API key but no OpenRouter balance.
 
 ## CLI flags

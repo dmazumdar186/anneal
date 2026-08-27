@@ -17,13 +17,13 @@ def test_resolve_tier_cheap() -> None:
 
 
 def test_resolve_tier_balanced() -> None:
-    """balanced tier: audit/fix/red/blue → haiku 4.5 anthropic; judge → gemini flash openrouter."""
+    """balanced tier: audit/fix/red/blue → sonnet 5 anthropic; judge → gemini flash openrouter."""
     result = resolve_tier("balanced")
     assert set(result.keys()) == {"auditor", "fixer", "red", "blue", "judge"}
 
     for role in ("auditor", "fixer", "red", "blue"):
         assert result[role]["provider"] == "anthropic", f"{role} provider should be anthropic"
-        assert result[role]["model"] == "claude-haiku-4-5-20251001", f"{role} model mismatch"
+        assert result[role]["model"] == "claude-sonnet-5", f"{role} model mismatch"
 
     assert result["judge"]["provider"] == "openrouter"
     assert result["judge"]["model"] == "google/gemini-2.5-flash"
@@ -36,10 +36,11 @@ def test_resolve_tier_premium() -> None:
 
     for role in ("auditor", "fixer", "red", "blue"):
         assert result[role]["provider"] == "anthropic", f"{role} provider should be anthropic"
-        assert result[role]["model"] == "claude-sonnet-4-6", f"{role} model mismatch"
+        expected = "claude-sonnet-5" if role == "fixer" else "claude-fable-5"
+        assert result[role]["model"] == expected, f"{role} model mismatch"
 
     assert result["judge"]["provider"] == "anthropic"
-    assert result["judge"]["model"] == "claude-haiku-4-5-20251001"
+    assert result["judge"]["model"] == "claude-fable-5"
 
 
 def test_resolve_tier_ultra_substantive_roles() -> None:
@@ -49,17 +50,25 @@ def test_resolve_tier_ultra_substantive_roles() -> None:
 
     for role in ("auditor", "fixer", "red", "blue"):
         assert result[role]["provider"] == "anthropic", f"{role} provider should be anthropic"
-        assert result[role]["model"] == "claude-opus-4-7", f"{role} model mismatch"
+        assert result[role]["model"] == "claude-fable-5", f"{role} model mismatch"
 
 
 def test_resolve_tier_ultra_judge() -> None:
     """ultra tier: judge → sonnet 4.6 anthropic (Opus is overkill for arbitration)."""
     result = resolve_tier("ultra")
     assert result["judge"]["provider"] == "anthropic"
-    assert result["judge"]["model"] == "claude-sonnet-4-6"
+    assert result["judge"]["model"] == "claude-fable-5"
 
 
 def test_resolve_tier_invalid_raises() -> None:
     """Passing an unknown tier string raises ValueError."""
     with pytest.raises(ValueError, match="Unknown tier"):
         resolve_tier("garbage")  # type: ignore[arg-type]
+
+
+def test_no_tier_resolves_to_haiku() -> None:
+    """Haiku 4.5 is banned (~/.claude/rules/model-tier.md); no preset may reach it."""
+    from anneal.config import resolve_tier
+    for tier in ("cheap", "cheap-gemini", "balanced", "premium", "ultra"):
+        for role, spec in resolve_tier(tier).items():
+            assert "haiku" not in spec["model"], f"{tier}/{role} resolves to banned Haiku: {spec}"

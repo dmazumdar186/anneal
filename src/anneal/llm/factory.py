@@ -5,7 +5,7 @@ Usage::
     from anneal.llm.factory import build_llm
 
     api_keys = {**load_env(anneal_root), **os.environ}
-    llm = build_llm("anthropic", "claude-haiku-4-5-20251001", api_keys)
+    llm = build_llm("anthropic", "claude-sonnet-5", api_keys)
     llm = build_llm("openrouter", "google/gemini-2.5-flash", api_keys)
     llm = build_llm("gemini", "gemini-2.5-flash", api_keys)
 """
@@ -46,7 +46,7 @@ def build_llm(
 
     Example::
 
-        >>> llm = build_llm("anthropic", "claude-haiku-4-5-20251001",
+        >>> llm = build_llm("anthropic", "claude-sonnet-5",
         ...                  {"ANTHROPIC_API_KEY": "sk-ant-..."})
         >>> isinstance(llm, ClaudeLLM)
         True

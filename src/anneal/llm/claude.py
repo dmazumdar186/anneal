@@ -30,7 +30,7 @@ class ClaudeLLM:
     ``CostTracker.add()`` to get accurate weighted billing.
 
     Args:
-        model: Claude model ID. Defaults to claude-sonnet-4-6.
+        model: Claude model ID. Defaults to claude-sonnet-5.
         api_key: Anthropic API key. If None, read from ANTHROPIC_API_KEY env var.
         temperature: Sampling temperature. Defaults to 0.0 for determinism.
         max_tokens: Maximum tokens in the response. Defaults to 8192.
@@ -42,7 +42,7 @@ class ClaudeLLM:
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-6",
+        model: str = "claude-sonnet-5",
         api_key: str | None = None,
         temperature: float = 0.0,
         max_tokens: int = 8192,
