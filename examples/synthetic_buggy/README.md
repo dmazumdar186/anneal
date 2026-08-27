@@ -40,8 +40,8 @@ rounds**.
 
 ## Cost estimate
 
-- **cheap tier** (~Haiku / GPT-4o-mini): ~$0.05–0.10 per run
-- **balanced tier** (~Sonnet): ~$0.15–0.25 per run
+- **cheap tier** (Gemini Flash): ~$0.05–0.10 per run
+- **balanced tier** (Sonnet 5): ~$0.20–0.35 per run (estimate at 2026-08-27 list prices; not measured)
 
 ## Planted bugs
 

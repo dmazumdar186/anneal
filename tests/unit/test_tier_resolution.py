@@ -30,7 +30,7 @@ def test_resolve_tier_balanced() -> None:
 
 
 def test_resolve_tier_premium() -> None:
-    """premium tier: audit/fix/red/blue → sonnet 4.6 anthropic; judge → haiku 4.5 anthropic."""
+    """premium tier: auditor/red/blue/judge → fable 5 anthropic; fixer → sonnet 5."""
     result = resolve_tier("premium")
     assert set(result.keys()) == {"auditor", "fixer", "red", "blue", "judge"}
 
@@ -44,7 +44,7 @@ def test_resolve_tier_premium() -> None:
 
 
 def test_resolve_tier_ultra_substantive_roles() -> None:
-    """ultra tier: auditor/fixer/red/blue → opus 4.7 anthropic."""
+    """ultra tier: every role → fable 5 anthropic."""
     result = resolve_tier("ultra")
     assert set(result.keys()) == {"auditor", "fixer", "red", "blue", "judge"}
 

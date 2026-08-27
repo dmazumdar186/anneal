@@ -86,9 +86,9 @@ Public artifact + portfolio piece. Narrative ties back to a past client project 
 | Tier | Auditor / Fixer / Red / Blue | Judge | Provider |
 |---|---|---|---|
 | `cheap` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash` | OpenRouter (all) |
-| `balanced` (default) | `claude-haiku-4-5-20251001` | `google/gemini-2.5-flash` | Anthropic direct + OpenRouter |
-| `premium` | `claude-sonnet-4-6` | `claude-haiku-4-5-20251001` | Anthropic direct |
-| `ultra` | `claude-opus-4-7` | `claude-sonnet-4-6` | Anthropic direct |
+| `balanced` (default) | `claude-sonnet-5` | `google/gemini-2.5-flash` | Anthropic direct + OpenRouter |
+| `premium` | `claude-fable-5` (fixer: `claude-sonnet-5`) | `claude-fable-5` | Anthropic direct |
+| `ultra` | `claude-fable-5` | `claude-fable-5` | Anthropic direct |
 | `cheap-gemini` | `gemini-2.0-flash` | `gemini-2.0-flash` | Gemini direct (no OpenRouter) |
 
 Default `--max-cost-usd`: $1.00 (canary suite uses $10).
